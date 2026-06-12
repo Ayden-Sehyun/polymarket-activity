@@ -18,21 +18,14 @@ import {
 } from './api'
 import {
   formatMonthYear,
-  formatNumber,
   formatTimeShort,
-  formatTimeExact,
-  formatUsd,
-  relativeTime,
   shortHash,
 } from './format'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Skeleton } from '@/components/ui/skeleton'
-import { OutcomeChip } from '@/components/OutcomeChip'
 import { ProfileAvatar } from '@/components/ProfileAvatar'
-import { MarketIcon } from '@/components/MarketIcon'
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 
@@ -56,16 +49,9 @@ const TYPE_OPTIONS: { value: ActivityType | ''; label: string }[] = [
   { value: 'REWARD', label: 'Reward' },
 ]
 
-const eventHref = (slug: string) => `https://polymarket.com/event/${slug}`
 const txHref = (hash: string) => `https://polygonscan.com/tx/${hash}`
 
 const columnHelper = createColumnHelper<Activity>()
-// Headless TanStack Table: three composite columns rendered as div cells.
-const columns = [
-  columnHelper.display({ id: 'type' }),
-  columnHelper.display({ id: 'market' }),
-  columnHelper.display({ id: 'amount' }),
-]
 
 const rawEventTint = (eventSlug: string) => {
   let hash = 0
@@ -141,7 +127,6 @@ export default function App() {
   const [type, setType] = useState<ActivityType | ''>('')
   const [side, setSide] = useState<Side | ''>('')
   const [outcome, setOutcome] = useState('')
-  const [view, setView] = useState<'activity' | 'raw'>('raw')
   const [showTop, setShowTop] = useState(false)
 
   const validAddress = ADDRESS_RE.test(address)
@@ -209,27 +194,19 @@ export default function App() {
     }
   }, [allRows])
 
-  const table = useReactTable({
-    data: rows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getRowId: activityKey,
-  })
   const rawTable = useReactTable({
     data: rows,
     columns: rawColumns,
     getCoreRowModel: getCoreRowModel(),
     getRowId: activityKey,
   })
-  const tableRows = table.getRowModel().rows
   const rawTableRows = rawTable.getRowModel().rows
-  const activeRows = view === 'raw' ? rawTableRows : tableRows
 
   const parentRef = useRef<HTMLDivElement>(null)
   const virtualizer = useVirtualizer({
-    count: activeRows.length,
+    count: rawTableRows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => (view === 'raw' ? 33 : 88),
+    estimateSize: () => 33,
     overscan: 12,
   })
   const virtualRows = virtualizer.getVirtualItems()
@@ -239,7 +216,7 @@ export default function App() {
     const el = parentRef.current
     if (!el) return
     setShowTop(el.scrollTop > 1200)
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 900
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 4000
     if (nearBottom && hasNextPage && !isFetchingNextPage && !isError) {
       fetchNextPage()
     }
@@ -256,7 +233,7 @@ export default function App() {
     const el = parentRef.current
     if (el) el.scrollTop = 0
     setShowTop(false)
-  }, [address, type, side, outcome, view])
+  }, [address, type, side, outcome])
 
   const statusTail = isFetching
     ? ' · fetching…'
@@ -271,7 +248,7 @@ export default function App() {
       : `${rows.length} of ${allRows.length} loaded rows`
 
   const loading = isPending && validAddress
-  const empty = !loading && tableRows.length === 0
+  const empty = !loading && rawTableRows.length === 0
 
   return (
     <div className="min-h-[100dvh] bg-[var(--page)] text-foreground">
@@ -342,18 +319,6 @@ export default function App() {
         </Card>
         )}
 
-        {/* ---- Tabs ---- */}
-        <Tabs value={view} onValueChange={(v) => setView(v as 'activity' | 'raw')} className="mb-2">
-          <TabsList variant="line" className="border-b border-hairline">
-            <TabsTrigger value="activity" className="px-0 pb-2 text-[15px]">
-              Pretty
-            </TabsTrigger>
-            <TabsTrigger value="raw" className="px-0 pb-2 text-[15px]" data-testid="tab-raw">
-              Table
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
         {/* ---- Filter pills (sticky, horizontally scrollable) ---- */}
         <div className="sticky top-[57px] z-20 -mx-4 mb-3 flex gap-2 overflow-x-auto bg-[var(--page)] px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:top-[61px]">
           <PillSelect
@@ -408,33 +373,21 @@ export default function App() {
           </p>
         )}
 
-        {/* ---- Activity list: div-grid, virtualized ---- */}
+        {/* ---- Activity table: div-grid, virtualized ---- */}
         <Card className="overflow-hidden rounded-xl border-0 p-0 ring-1 ring-[var(--hairline)]" role="table">
-          {view === 'activity' && (
-            <div
-              className="sticky top-0 z-10 hidden grid-cols-[120px_1fr_160px] gap-3 border-b border-hairline bg-card px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--faint)] md:grid"
-              role="row"
-            >
-              <div role="columnheader">Type</div>
-              <div role="columnheader">Market</div>
-              <div role="columnheader" className="text-right">
-                Amount
-              </div>
-            </div>
-          )}
-
           <div
             ref={parentRef}
             onScroll={maybeFetchMore}
-            className={`table-container h-[calc(100dvh-300px)] min-h-[300px] overflow-y-auto overscroll-contain ${
-              view === 'raw' ? 'overflow-x-auto' : 'overflow-x-hidden'
-            }`}
+            className="table-container h-[calc(100dvh-260px)] min-h-[300px] overflow-y-auto overflow-x-auto overscroll-contain"
           >
             {loading && (
-              <div className="divide-y divide-hairline">
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <RowSkeleton key={i} />
-                ))}
+              <div className="min-w-[980px]" data-testid="raw-loading">
+                <RawTableHeader rawTable={rawTable} />
+                <div className="divide-y divide-hairline">
+                  {Array.from({ length: 18 }).map((_, i) => (
+                    <RawRowSkeleton key={i} />
+                  ))}
+                </div>
               </div>
             )}
 
@@ -455,134 +408,9 @@ export default function App() {
               </div>
             )}
 
-            {!loading && !empty && view === 'activity' && (
-              <div className="relative w-full" style={{ height: totalSize }}>
-                {virtualRows.map((vRow) => {
-                  const row = tableRows[vRow.index]
-                  const a = row.original
-                  return (
-                    <div
-                      key={row.id}
-                      data-testid="row"
-                      data-index={vRow.index}
-                      ref={virtualizer.measureElement}
-                      role="row"
-                      className="absolute inset-x-0 top-0 px-2 pb-2 md:p-0"
-                      style={{ transform: `translateY(${vRow.start}px)` }}
-                    >
-                      {/* Inner card: rounded card on mobile, flat hairline row on desktop */}
-                      <div className="grid grid-cols-[1fr_auto] items-start gap-3 rounded-[10px] bg-card p-3 ring-1 ring-[var(--hairline)] transition-colors md:grid-cols-[120px_1fr_160px] md:items-center md:rounded-none md:border-b md:border-hairline md:px-4 md:py-3 md:ring-0 md:hover:bg-[var(--page)]">
-                        {/* Type cell — desktop column only; hidden on mobile (folds into sub-line) */}
-                        <div
-                          role="cell"
-                          data-testid="cell-type"
-                          className="hidden self-center text-sm text-foreground md:block"
-                        >
-                          {capitalize(a.type)}
-                        </div>
-
-                        {/* Market cell — icon + title + sub-line */}
-                        <div role="cell" data-testid="cell-market" className="flex min-w-0 items-start gap-3">
-                        <MarketIcon src={a.icon} className="size-12 md:size-10" />
-                        <div className="min-w-0 flex-1">
-                          <a
-                            href={eventHref(a.eventSlug)}
-                            target="_blank"
-                            rel="noreferrer"
-                            title={a.title}
-                            data-testid="market-title"
-                            className="line-clamp-2 text-[15px] font-medium leading-snug text-foreground hover:underline md:line-clamp-1 md:text-sm"
-                          >
-                            {a.title || a.slug || '—'}
-                          </a>
-                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--secondary-text)]">
-                            {a.side && (
-                              <span data-testid="subline-side" className="capitalize text-muted-foreground">
-                                {a.side.toLowerCase()}
-                              </span>
-                            )}
-                            {/* Type token — always rendered here so it shows on mobile */}
-                            <span data-testid="subline-type" className="text-muted-foreground md:hidden">
-                              {capitalize(a.type)}
-                            </span>
-                            {a.outcome && (
-                              <OutcomeChip
-                                outcome={a.outcome}
-                                price={a.type === 'TRADE' ? a.price : undefined}
-                              />
-                            )}
-                            {Number.isFinite(a.size) && a.size > 0 && (
-                              <span data-testid="subline-shares">{formatNumber(a.size)} shares</span>
-                            )}
-                            {a.eventSlug && (
-                              <a
-                                href={eventHref(a.eventSlug)}
-                                target="_blank"
-                                rel="noreferrer"
-                                data-testid="slug-link"
-                                className="max-w-[40%] truncate text-[var(--brand)] hover:underline"
-                                title={a.eventSlug}
-                              >
-                                {a.eventSlug}
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Amount cell — usd + relative time + tx link */}
-                      <div
-                        role="cell"
-                        data-testid="cell-amount"
-                        className="flex flex-col items-end justify-start gap-0.5 text-right"
-                      >
-                        <span data-testid="cell-amount-usd" className="text-sm font-semibold tabular-nums text-foreground">
-                          {formatUsd(a.usdcSize)}
-                        </span>
-                        <span className="flex items-center gap-1 text-xs text-[var(--secondary-text)]">
-                          <span title={formatTimeExact(a.timestamp)} data-testid="rel-time">
-                            {relativeTime(a.timestamp)}
-                          </span>
-                          <a
-                            href={txHref(a.transactionHash)}
-                            target="_blank"
-                            rel="noreferrer"
-                            data-testid="tx-link"
-                            title="View on Polygonscan"
-                            className="text-[var(--faint)] hover:text-[var(--brand)]"
-                          >
-                            <ExternalLink className="size-3.5" />
-                          </a>
-                        </span>
-                      </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {!loading && !empty && view === 'raw' && (
+            {!loading && !empty && (
               <div className="min-w-[980px]" data-testid="raw-table">
-                <div
-                  className="sticky top-0 z-10 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline bg-card px-3 py-1.5 text-[10px] font-semibold tracking-wide text-[var(--faint)]"
-                  role="row"
-                  data-testid="raw-header"
-                >
-                  {rawTable.getHeaderGroups()[0]?.headers.map((header) => (
-                    <div
-                      key={header.id}
-                      role="columnheader"
-                      className={
-                        header.id === 'price' || header.id === 'usdcSize' || header.id === 'tx'
-                          ? 'text-right tabular-nums'
-                          : ''
-                      }
-                    >
-                      {String(header.column.columnDef.header)}
-                    </div>
-                  ))}
-                </div>
+                <RawTableHeader rawTable={rawTable} />
                 <div className="relative" style={{ height: totalSize }}>
                   {virtualRows.map((vRow) => {
                     const row = rawTableRows[vRow.index]
@@ -703,21 +531,41 @@ function DecimalNumber({
   )
 }
 
-function RowSkeleton() {
+function RawTableHeader({ rawTable }: { rawTable: ReturnType<typeof useReactTable<Activity>> }) {
   return (
-    <div className="grid grid-cols-[1fr_auto] items-start gap-3 px-4 py-3 md:grid-cols-[120px_1fr_160px] md:items-center">
-      <Skeleton className="hidden h-4 w-16 md:block" />
-      <div className="flex items-start gap-3">
-        <Skeleton className="size-12 rounded-lg md:size-10" />
-        <div className="flex-1 space-y-2 py-0.5">
-          <Skeleton className="h-3.5 w-3/4" />
-          <Skeleton className="h-3 w-1/2" />
+    <div
+      className="sticky top-0 z-10 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline bg-card px-3 py-1.5 text-[10px] font-semibold tracking-wide text-[var(--faint)]"
+      role="row"
+      data-testid="raw-header"
+    >
+      {rawTable.getHeaderGroups()[0]?.headers.map((header) => (
+        <div
+          key={header.id}
+          role="columnheader"
+          className={
+            header.id === 'price' || header.id === 'usdcSize' || header.id === 'tx'
+              ? 'text-right tabular-nums'
+              : ''
+          }
+        >
+          {String(header.column.columnDef.header)}
         </div>
-      </div>
-      <div className="flex flex-col items-end gap-1.5">
-        <Skeleton className="h-3.5 w-14" />
-        <Skeleton className="h-3 w-10" />
-      </div>
+      ))}
+    </div>
+  )
+}
+
+function RawRowSkeleton() {
+  return (
+    <div className="grid h-[33px] grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] items-center gap-2 px-3 py-1">
+      <Skeleton className="h-3 w-10" />
+      <Skeleton className="h-3 w-8" />
+      <Skeleton className="h-3 w-[82%]" />
+      <Skeleton className="h-3 w-12" />
+      <Skeleton className="ml-auto h-3 w-12" />
+      <Skeleton className="ml-auto h-3 w-16" />
+      <Skeleton className="h-3 w-24" />
+      <Skeleton className="ml-auto size-5 rounded-full" />
     </div>
   )
 }

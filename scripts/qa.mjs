@@ -11,7 +11,7 @@ const DEFAULT = '0x774728ed9264a5ca242e8bd7952a869df318fe40'
 const OTHER = '0x0c7c5204404e9d5402d258fedac59c7212bae4cb'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-const ROW = '[data-testid="row"]'
+const RAW_ROW = '[data-testid="raw-row"]'
 
 async function runSweep(mode) {
   const isMobile = mode === 'mobile'
@@ -69,21 +69,22 @@ async function runSweep(mode) {
     return { shown: m ? +m[1] : 0, total: m ? +m[1] : 0, text }
   }
 
-  // Structured extraction from the composite div-grid rows.
+  // Structured extraction from the raw div-grid rows.
   const sigText = (s) => (s || '').replace(/[$,¢\s]/g, '')
   const visibleRows = () =>
-    page.$$eval(ROW, (els) =>
+    page.$$eval(RAW_ROW, (els) =>
       els.map((el) => {
-        const t = (sel) => el.querySelector(sel)?.textContent?.trim() ?? ''
-        const chip = el.querySelector('[data-testid="chip"]')
+        const cells = [...el.querySelectorAll('[role="cell"]')]
+        const t = (i) => cells[i]?.textContent?.trim() ?? ''
         return {
-          // type: desktop column when visible, else the mobile sub-line token
-          type: t('[data-testid="cell-type"]') || t('[data-testid="subline-type"]'),
-          side: t('[data-testid="subline-side"]').toUpperCase(),
-          outcome: chip?.getAttribute('data-outcome') ?? '',
-          usd: t('[data-testid="cell-amount-usd"]'),
-          shares: t('[data-testid="subline-shares"]'),
-          chipText: chip?.textContent?.trim() ?? '',
+          type: t(0),
+          side: t(1),
+          title: t(2),
+          outcome: t(3),
+          price: t(4),
+          amount: t(5),
+          time: t(6),
+          txHref: cells[7]?.querySelector('a')?.href ?? '',
         }
       }),
     )
@@ -97,13 +98,11 @@ async function runSweep(mode) {
     try {
       await page.waitForFunction(
         (want) => {
-          const rows = [...document.querySelectorAll('[data-testid="row"]')]
+          const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
           if (rows.length === 0) return false
           if (!want) return true
           return rows.every((r) => {
-            const t =
-              r.querySelector('[data-testid="cell-type"]')?.textContent?.trim() ||
-              r.querySelector('[data-testid="subline-type"]')?.textContent?.trim()
+            const t = r.querySelector('[role="cell"]')?.textContent?.trim()
             return t === want
           })
         },
@@ -126,7 +125,7 @@ async function runSweep(mode) {
 
   // ---- 1. initial load via shareable ?address= param
   await page.goto(`${APP_URL}/?address=${DEFAULT}`)
-  await page.waitForSelector(ROW, { timeout: 20000 })
+  await page.waitForSelector(RAW_ROW, { timeout: 20000 })
   await sleep(900)
   let rc = await rowCounts()
   const inputPrefilled = await page.inputValue('[data-testid="address-input"]')
@@ -137,39 +136,31 @@ async function runSweep(mode) {
   )
 
   // ---- 2. link formats
-  const txHrefs = await page.$$eval('[data-testid="tx-link"]', (as) => as.slice(0, 5).map((a) => a.href))
+  const rowsForLinks = await visibleRows()
+  const txHrefs = rowsForLinks.slice(0, 5).map((r) => r.txHref)
   ok(
     'tx links → polygonscan',
     txHrefs.length > 0 && txHrefs.every((h) => /^https:\/\/polygonscan\.com\/tx\/0x[0-9a-f]{64}$/.test(h)),
     txHrefs[0],
   )
-  const slugHrefs = await page.$$eval('[data-testid="slug-link"]', (as) => as.slice(0, 5).map((a) => a.href))
-  ok(
-    'event slug links → polymarket.com/event/…',
-    slugHrefs.length > 0 && slugHrefs.every((h) => h.startsWith('https://polymarket.com/event/')),
-    slugHrefs[0],
-  )
 
-  // ---- 3. 6 significant figures on USD / Shares / chip price (cents)
+  // ---- 3. raw numeric formatting
   const sigDigits = (s) => {
     const t = sigText(s)
     if (!/^\d*\.?\d+$/.test(t)) return 0
     return t.replace('.', '').replace(/^0+/, '').length
   }
   const rows0 = await visibleRows()
-  const tooPrecise = []
+  const badNumbers = []
   for (const r of rows0) {
-    for (const val of [r.usd, r.shares]) if (val && val !== '—' && sigDigits(val) > 6) tooPrecise.push(val)
-    // chip cents text e.g. "No99.9¢" → strip the outcome word, keep the number.
-    // Chip shows the API's full precision (≤15 sig digits); float dust beyond
-    // 15 digits (e.g. 99.89999999999999) would mean the ×100 guard regressed.
-    const cents = r.chipText.replace(/[^\d.]/g, '')
-    if (cents && sigDigits(cents) > 15) tooPrecise.push(r.chipText)
+    if (r.price !== '--' && !/^\d+\.\d{3}$/.test(r.price)) badNumbers.push(r.price)
+    if (r.amount && !/^\d+\.\d{5}$/.test(r.amount)) badNumbers.push(r.amount)
+    if (r.amount && sigDigits(r.amount) > 15) badNumbers.push(r.amount)
   }
   ok(
-    'usd/shares ≤6 sig digits; chip cents full precision ≤15 (no float dust)',
-    tooPrecise.length === 0,
-    tooPrecise[0] || `checked ${rows0.length} visible rows`,
+    'raw price/amount decimal formatting',
+    badNumbers.length === 0,
+    badNumbers[0] || `checked ${rows0.length} visible rows`,
   )
 
   // ---- 4. deep infinite scroll past the 3000-offset cap
@@ -227,12 +218,12 @@ async function runSweep(mode) {
     `${rows.length} visible, types: ${[...new Set(rows.map((r) => r.type))].join(',')}`,
   )
   await typeSelect.selectOption('CONVERSION')
-  await waitForRows('Conversion')
+  await waitForRows('Convert')
   await sleep(400)
   rows = await visibleRows()
   ok(
     'type filter = Convert',
-    rows.length > 0 && rows.every((r) => r.type === 'Conversion'),
+    rows.length > 0 && rows.every((r) => r.type === 'Convert' && r.price === '--'),
     `${rows.length} visible`,
   )
 
@@ -247,7 +238,7 @@ async function runSweep(mode) {
   rows = await visibleRows()
   ok(
     'side filter = Sell (server-side)',
-    rows.length > 0 && rows.every((r) => r.side === 'SELL') && apiCalls.some((c) => c.side === 'SELL'),
+    rows.length > 0 && rows.every((r) => r.side === 'Sell') && apiCalls.some((c) => c.side === 'SELL'),
     `${rows.length} visible, sides: ${[...new Set(rows.map((r) => r.side))].join(',')}`,
   )
 
@@ -325,20 +316,19 @@ async function runSweep(mode) {
       `scrollWidth=${docScrollW}, clientWidth=${docClientW}`,
     )
 
-    const typeCellVisible = await page.locator('[data-testid="cell-type"]').first().isVisible()
-    const sublineTypeVisible = await page.locator('[data-testid="subline-type"]').first().isVisible()
-    const sublineTypeText = (await page.locator('[data-testid="subline-type"]').first().innerText().catch(() => '')).trim()
+    const tableScrollW = await page.$eval('.table-container', (el) => el.scrollWidth)
+    const tableClientW = await page.$eval('.table-container', (el) => el.clientWidth)
     ok(
-      'mobile: type folds into sub-line (column hidden, sub-line text visible)',
-      !typeCellVisible && sublineTypeVisible && sublineTypeText.length > 0,
-      `cell-type vis=${typeCellVisible}, subline-type="${sublineTypeText}"`,
+      'mobile: table scrolls horizontally inside container',
+      tableScrollW > tableClientW,
+      `table scrollWidth=${tableScrollW}, clientWidth=${tableClientW}`,
     )
 
     const inputFs = await page.$eval('[data-testid="address-input"]', (el) => parseFloat(getComputedStyle(el).fontSize))
     ok('mobile: address input ≥16px (iOS zoom guard)', inputFs >= 16, `${inputFs}px`)
 
-    const rowBox = await page.locator(ROW).first().boundingBox()
-    ok('mobile: row tap target ≥44px tall', !!rowBox && rowBox.height >= 44, `${rowBox ? Math.round(rowBox.height) : 0}px`)
+    const rowBox = await page.locator(RAW_ROW).first().boundingBox()
+    ok('mobile: dense raw row is compact', !!rowBox && rowBox.height <= 36, `${rowBox ? Math.round(rowBox.height) : 0}px`)
 
     await page.screenshot({ path: '/tmp/pm_qa_mobile_top.png' })
     await scrollContainer(900)
@@ -346,13 +336,12 @@ async function runSweep(mode) {
     await page.screenshot({ path: '/tmp/pm_qa_mobile_rows.png' })
     await scrollContainer(0)
   } else {
-    const typeCellVisible = await page.locator('[data-testid="cell-type"]').first().isVisible()
-    const typeCellText = (await page.locator('[data-testid="cell-type"]').first().innerText().catch(() => '')).trim()
-    const headerVisible = await page.locator('[role="columnheader"]:has-text("Type")').first().isVisible()
+    const firstTypeText = (await page.locator(`${RAW_ROW} [role="cell"]`).first().innerText().catch(() => '')).trim()
+    const headerVisible = await page.locator('[data-testid="raw-header"] [role="columnheader"]:has-text("Type")').first().isVisible()
     ok(
-      'desktop: type shown as its own column',
-      typeCellVisible && typeCellText.length > 0 && headerVisible,
-      `cell-type="${typeCellText}", header vis=${headerVisible}`,
+      'desktop: raw type shown as first column',
+      firstTypeText.length > 0 && headerVisible,
+      `type="${firstTypeText}", header vis=${headerVisible}`,
     )
     await page.screenshot({ path: '/tmp/pm_qa_desktop.png' })
   }

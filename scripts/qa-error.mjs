@@ -2,7 +2,7 @@
 // with a working retry button. Run: node scripts/qa-error.mjs
 import { chromium } from 'playwright'
 
-const ROW = '[data-testid="row"]'
+const ROW = '[data-testid="raw-row"]'
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } })
 page.on('pageerror', (e) => console.log('pageerror:', e.message))
@@ -24,17 +24,17 @@ await page.locator('[data-testid="error"] button').click()
 await page.waitForSelector(ROW, { timeout: 20000 })
 await page.waitForFunction(
   () => {
-    const rows = [...document.querySelectorAll('[data-testid="row"]')]
+    const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
     if (rows.length === 0) return false
     return rows.every((r) => {
-      const t = r.querySelector('[data-testid="cell-type"]')?.textContent?.trim()
+      const t = r.querySelector('[role="cell"]')?.textContent?.trim()
       return t === 'Redeem'
     })
   },
   { timeout: 15000 },
 ).catch(() => {})
 const types = await page.$$eval(ROW, (rows) =>
-  [...new Set(rows.map((r) => r.querySelector('[data-testid="cell-type"]')?.textContent?.trim()))],
+  [...new Set(rows.map((r) => r.querySelector('[role="cell"]')?.textContent?.trim()))],
 )
 const errGone = (await page.locator('[data-testid="error"]').count()) === 0
 console.log(
