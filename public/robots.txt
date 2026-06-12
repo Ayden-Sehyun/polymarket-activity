@@ -1,0 +1,6 @@
+# Crawling is allowed on purpose: robots.txt "Disallow: /" would stop crawlers
+# from ever seeing the X-Robots-Tag/meta noindex, and a URL that is blocked but
+# linked from elsewhere can still show up in results as a bare link. Letting
+# them fetch the page and read "noindex, nofollow" keeps it out entirely.
+User-agent: *
+Disallow:

@@ -1,0 +1,13 @@
+import { chromium, devices } from 'playwright'
+const browser = await chromium.launch()
+const ctx = await browser.newContext({ ...devices['iPhone 14'] })
+const page = await ctx.newPage()
+await page.goto('https://polymarket.com/@appahenduocian?tab=activity', { waitUntil: 'domcontentloaded', timeout: 45000 })
+await page.waitForTimeout(6000)
+await page.screenshot({ path: '/tmp/pm_ref_mobile_top.png' })
+await page.mouse.wheel(0, 900)
+await page.waitForTimeout(1500)
+await page.screenshot({ path: '/tmp/pm_ref_mobile_rows.png' })
+const m = await page.evaluate(() => ({ vw: innerWidth, vh: innerHeight, bodyFs: getComputedStyle(document.body).fontSize }))
+console.log(JSON.stringify(m))
+await browser.close()
