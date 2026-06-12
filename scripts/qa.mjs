@@ -129,10 +129,13 @@ async function runSweep(mode) {
   await sleep(900)
   let rc = await rowCounts()
   const inputPrefilled = await page.inputValue('[data-testid="address-input"]')
+  const previewRequest = apiCalls.some(
+    (c) => c.user === DEFAULT && c.offset === '0' && c.sortDirection === 'DESC' && c.count === 50,
+  )
   ok(
-    'initial load via ?address= param (input prefilled)',
-    rc.total >= 500 && inputPrefilled === DEFAULT,
-    `${rc.total} rows`,
+    'initial load via ?address= param (50-row LCP preview)',
+    rc.total >= 50 && inputPrefilled === DEFAULT && previewRequest,
+    `${rc.total} rows; preview=${previewRequest}`,
   )
 
   // ---- 2. link formats

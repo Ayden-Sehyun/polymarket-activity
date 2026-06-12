@@ -3,6 +3,8 @@
   import {
     activityKey,
     fetchActivityPage,
+    fetchPusdBalance,
+    INITIAL_PAGE_SIZE,
     type Activity,
     type ActivityType,
     type Cursor,
@@ -14,6 +16,7 @@
   const ROW_HEIGHT = 33
   const OVERSCAN = 12
   const LOAD_AHEAD_PX = 4000
+  const REFRESH_INTERVAL_MS = 15_000
 
   const TYPE_OPTIONS: { value: ActivityType | ''; label: string }[] = [
     { value: '', label: 'All types' },
@@ -36,13 +39,25 @@
   const capitalize = (s: string) => (s ? s[0] + s.slice(1).toLowerCase() : s)
   const displayType = (value: ActivityType) => (value === 'CONVERSION' ? 'Convert' : capitalize(value))
 
-  const rawEventTint = (eventSlug: string) => {
+  const rawEventAccent = (eventSlug: string) => {
     let hash = 0
     for (let i = 0; i < eventSlug.length; i += 1) {
       hash = (hash * 31 + eventSlug.charCodeAt(i)) >>> 0
     }
-    return `hsl(${hash % 360} 72% 92% / 0.78)`
+    return `hsl(${hash % 360} 62% 42% / 0.9)`
   }
+  const sideClass = (value: Side | '') =>
+    value === 'BUY'
+      ? 'text-green-600'
+      : value === 'SELL'
+        ? 'text-red-600'
+        : 'text-foreground'
+  const outcomeClass = (value: string) =>
+    value.toLowerCase() === 'yes'
+      ? 'text-green-600'
+      : value.toLowerCase() === 'no'
+        ? 'text-red-600'
+        : 'text-foreground'
 
   async function fetchOldestActivity(nextAddress: string, signal?: AbortSignal): Promise<Activity | null> {
     const params = new URLSearchParams({
@@ -70,12 +85,18 @@
   let error: Error | null = null
   let joinedActivity: Activity | null = null
   let joinedFetching = false
+  let pusdBalance: number | null = null
+  let pusdBalanceFetching = false
+  let theme: 'light' | 'dark' = 'light'
   let scrollTop = 0
   let viewportHeight = 300
   let showTop = false
   let requestSeq = 0
+  let refreshTimer: number | undefined
   let activeController: AbortController | null = null
+  let refreshController: AbortController | null = null
   let joinedController: AbortController | null = null
+  let balanceController: AbortController | null = null
   let parentRef: HTMLDivElement
 
   $: validAddress = ADDRESS_RE.test(address)
@@ -104,15 +125,25 @@
   $: profile = getProfile(allRows)
 
   onMount(() => {
+    const storedTheme = localStorage.getItem('theme')
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    theme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : prefersDark ? 'dark' : 'light'
+    applyTheme(theme)
     return () => {
       activeController?.abort()
+      refreshController?.abort()
       joinedController?.abort()
+      balanceController?.abort()
+      if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
     }
   })
 
   onDestroy(() => {
     activeController?.abort()
+    refreshController?.abort()
     joinedController?.abort()
+    balanceController?.abort()
+    if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
   })
 
   $: void watchQueryKey(address, type, side)
@@ -151,6 +182,11 @@
 
   async function resetAndFetch() {
     activeController?.abort()
+    refreshController?.abort()
+    if (refreshTimer !== undefined) {
+      window.clearInterval(refreshTimer)
+      refreshTimer = undefined
+    }
     const seq = ++requestSeq
     pages = []
     nextCursor = { offset: 0 }
@@ -165,11 +201,53 @@
       fetching = false
       fetchingNextPage = false
       joinedActivity = null
+      pusdBalance = null
+      pusdBalanceFetching = false
       return
     }
     loading = true
-    await Promise.all([fetchNext(false, seq), fetchJoined(seq)])
-    if (seq === requestSeq) loading = false
+    void fetchJoined(seq)
+    void fetchBalance(seq)
+    await fetchInitialRows(seq)
+    if (seq === requestSeq) startRefreshTimer(seq)
+  }
+
+  function startRefreshTimer(seq: number) {
+    if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
+    refreshTimer = window.setInterval(() => {
+      void refreshLatest(seq)
+    }, REFRESH_INTERVAL_MS)
+  }
+
+  async function fetchInitialRows(seq = requestSeq) {
+    activeController?.abort()
+    const controller = new AbortController()
+    activeController = controller
+    const fetchAddress = address.toLowerCase()
+    fetching = true
+    try {
+      const page = await fetchActivityPage(fetchAddress, { type, side }, { offset: 0 }, controller.signal, INITIAL_PAGE_SIZE)
+      if (seq !== requestSeq) return
+      pages = [page.items]
+      nextCursor = page.items.length === INITIAL_PAGE_SIZE ? { offset: 0 } : undefined
+      error = null
+    } catch (err) {
+      if (seq === requestSeq && !(err instanceof DOMException && err.name === 'AbortError')) {
+        error = err instanceof Error ? err : new Error(String(err))
+      }
+    } finally {
+      if (seq === requestSeq) {
+        loading = false
+        fetching = false
+        fetchingNextPage = false
+        await tick()
+        if (nextCursor) {
+          requestAnimationFrame(() => {
+            if (seq === requestSeq) void fetchNext(true)
+          })
+        }
+      }
+    }
   }
 
   async function fetchJoined(seq = requestSeq) {
@@ -185,6 +263,49 @@
     } finally {
       if (seq === requestSeq) joinedFetching = false
     }
+  }
+
+  async function fetchBalance(seq = requestSeq) {
+    balanceController?.abort()
+    const controller = new AbortController()
+    balanceController = controller
+    pusdBalance = null
+    pusdBalanceFetching = true
+    try {
+      const balance = await fetchPusdBalance(address.toLowerCase(), controller.signal)
+      if (seq === requestSeq) pusdBalance = balance
+    } catch {
+      if (seq === requestSeq) pusdBalance = null
+    } finally {
+      if (seq === requestSeq) pusdBalanceFetching = false
+    }
+  }
+
+  async function refreshLatest(seq = requestSeq) {
+    if (!validAddress) return
+    refreshController?.abort()
+    const controller = new AbortController()
+    refreshController = controller
+    const fetchAddress = address.toLowerCase()
+    try {
+      const page = await fetchActivityPage(fetchAddress, { type, side }, { offset: 0 }, controller.signal)
+      if (seq !== requestSeq) return
+      pages = mergeLatestPage(pages, page.items)
+      error = null
+      void fetchJoined(seq)
+      void fetchBalance(seq)
+    } catch (err) {
+      if (seq === requestSeq && !(err instanceof DOMException && err.name === 'AbortError')) {
+        error = err instanceof Error ? err : new Error(String(err))
+      }
+    }
+  }
+
+  function mergeLatestPage(sourcePages: Activity[][], latestItems: Activity[]) {
+    if (sourcePages.length === 0) return [latestItems]
+    const latestKeys = new Set(latestItems.map(activityKey))
+    const rest = sourcePages.flat().filter((item) => !latestKeys.has(activityKey(item)))
+    return [latestItems, rest]
   }
 
   async function fetchNext(asNextPage = true, seq = requestSeq) {
@@ -259,95 +380,120 @@
     }
   }
 
+  function formatPusdBalance(value: number) {
+    return new Intl.NumberFormat(undefined, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value)
+  }
+
   function externalLinkIcon() {
     return 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6 M15 3h6v6 M10 14 21 3'
   }
+
+  function applyTheme(nextTheme: 'light' | 'dark') {
+    document.documentElement.classList.toggle('dark', nextTheme === 'dark')
+    document.documentElement.style.colorScheme = nextTheme
+  }
+
+  function toggleTheme() {
+    theme = theme === 'dark' ? 'light' : 'dark'
+    localStorage.setItem('theme', theme)
+    applyTheme(theme)
+  }
 </script>
 
-<div class="min-h-[100dvh] bg-[var(--page)] text-foreground">
-  <header class="sticky top-0 z-30 border-b border-hairline bg-[var(--page)]/90 backdrop-blur supports-[backdrop-filter]:bg-[var(--page)]/75">
-    <div class="mx-auto flex max-w-[1100px] flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:gap-4 md:py-3.5">
+<div class="grid h-[100dvh] min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] text-foreground">
+  <header class="sticky top-0 z-30 border-b border-hairline bg-[var(--page)]/95 backdrop-blur supports-[backdrop-filter]:bg-[var(--page)]/85">
+    <div class="mx-auto flex max-w-[1100px] flex-col gap-2 px-4 py-2">
       <div class="flex items-center gap-2">
-        <span class="grid size-7 place-items-center rounded-lg bg-[var(--brand)] text-base font-bold text-white">P</span>
-        <span class="text-[15px] font-semibold tracking-tight">Activity</span>
-      </div>
-      <form class="flex flex-1 items-center gap-2" on:submit|preventDefault={submitAddress}>
-        <input
-          bind:value={addressInput}
-          spellcheck="false"
-          autocapitalize="none"
-          autocomplete="off"
-          autocorrect="off"
-          placeholder="0x… proxy wallet address"
-          data-testid="address-input"
-          class="flex h-10 flex-1 rounded-full border border-transparent bg-secondary px-3 py-1 text-base outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9 md:max-w-[460px]"
-        />
-        <button type="submit" class="h-10 rounded-full bg-[var(--brand)] px-5 text-sm font-medium text-white hover:bg-[var(--brand-hover)] md:h-9">
-          Load
+        <form class="flex min-w-0 flex-1 items-center gap-2" on:submit|preventDefault={submitAddress}>
+          <input
+            bind:value={addressInput}
+            spellcheck="false"
+            autocapitalize="none"
+            autocomplete="off"
+            autocorrect="off"
+            placeholder="0x… proxy wallet address"
+            data-testid="address-input"
+            class="h-10 min-w-0 flex-1 rounded-full border border-transparent bg-secondary px-3 py-1 text-base outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9"
+          />
+          <button type="submit" class="h-10 shrink-0 rounded-full bg-[var(--brand)] px-4 text-sm font-medium text-white hover:bg-[var(--brand-hover)] md:h-9">
+            Load
+          </button>
+        </form>
+        <button
+          type="button"
+          data-testid="theme-toggle"
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          class="h-10 shrink-0 rounded-full border border-hairline bg-card px-3 text-sm font-medium text-foreground hover:bg-secondary md:h-9"
+          on:click={toggleTheme}
+        >
+          {theme === 'dark' ? 'Light' : 'Dark'}
         </button>
-      </form>
-    </div>
-    {#if address !== '' && !validAddress}
-      <div class="mx-auto max-w-[1100px] px-4 pb-2 text-xs text-destructive" data-testid="hint">
-        <span class="hint">enter a 0x… address (40 hex chars)</span>
       </div>
-    {/if}
+
+      {#if validAddress}
+        <div class="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between md:gap-3">
+          <div class="flex min-w-0 items-center gap-2">
+            <span class="truncate font-medium text-foreground" data-testid="profile-name">{profile.name}</span>
+            <span class="shrink-0 text-[var(--faint)]">/</span>
+            <span class="shrink-0 font-mono">{shortHash(address)}</span>
+            <span class="shrink-0 text-[var(--faint)]">/</span>
+            <span class="shrink-0 text-[var(--secondary-text)]" data-testid="profile-joined">
+              {#if joinedActivity}
+                Joined {formatMonthYear(joinedActivity.timestamp)}
+              {:else if joinedFetching}
+                Joined …
+              {:else}
+                &nbsp;
+              {/if}
+            </span>
+            <span class="shrink-0 text-[var(--faint)]">/</span>
+            <span class="shrink-0 font-mono text-[var(--secondary-text)]" data-testid="pusd-balance">
+              {#if pusdBalance !== null}
+                {formatPusdBalance(pusdBalance)} pUSD
+              {:else if pusdBalanceFetching}
+                pUSD …
+              {:else}
+                pUSD --
+              {/if}
+            </span>
+          </div>
+          <p class="shrink-0 font-mono text-[11px] text-muted-foreground" data-testid="status">
+            {statusText}{statusTail}
+          </p>
+        </div>
+      {/if}
+
+      <div class="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <select bind:value={type} data-testid="filter-type" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
+          {#each TYPE_OPTIONS as option}
+            <option value={option.value}>{option.label}</option>
+          {/each}
+        </select>
+        <select bind:value={side} data-testid="filter-side" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
+          <option value="">Buy + sell</option>
+          <option value="BUY">Buy</option>
+          <option value="SELL">Sell</option>
+        </select>
+        <select bind:value={outcome} data-testid="filter-outcome" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
+          <option value="">All outcomes</option>
+          {#each outcomes as option}
+            <option value={option}>{option}</option>
+          {/each}
+        </select>
+      </div>
+
+      {#if address !== '' && !validAddress}
+        <div class="text-xs text-destructive" data-testid="hint">
+          <span class="hint">enter a 0x… address (40 hex chars)</span>
+        </div>
+      {/if}
+    </div>
   </header>
 
-  <main class="mx-auto max-w-[1100px] px-4 pb-24 pt-4 md:pt-6">
-    {#if validAddress}
-      <div class="mb-4 flex flex-row items-center gap-3 rounded-none border-0 bg-transparent px-0 py-0 shadow-none ring-0 md:gap-4 md:rounded-xl md:bg-card md:px-5 md:py-4 md:ring-1">
-        <div
-          class="grid size-14 shrink-0 place-items-center rounded-full bg-[linear-gradient(135deg,#e8efff,#f3f4f6)] text-lg font-semibold text-[var(--brand)] ring-1 ring-hairline md:size-16"
-          aria-hidden="true"
-        >
-          {shortHash(address).slice(2, 4).toUpperCase()}
-        </div>
-        <div class="min-w-0 flex-1">
-          <div class="truncate text-lg font-semibold leading-tight md:text-xl" data-testid="profile-name">
-            {profile.name}
-          </div>
-          <div class="truncate font-mono text-xs text-muted-foreground md:text-sm">
-            {shortHash(address)}
-          </div>
-          <div class="mt-0.5 text-xs text-[var(--secondary-text)]" data-testid="profile-joined">
-            {#if joinedActivity}
-              Joined {formatMonthYear(joinedActivity.timestamp)}
-            {:else if joinedFetching}
-              Joined …
-            {:else}
-              &nbsp;
-            {/if}
-          </div>
-        </div>
-      </div>
-    {/if}
-
-    <div class="sticky top-[57px] z-20 -mx-4 mb-3 flex gap-2 overflow-x-auto bg-[var(--page)] px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:top-[61px]">
-      <select bind:value={type} data-testid="filter-type" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
-        {#each TYPE_OPTIONS as option}
-          <option value={option.value}>{option.label}</option>
-        {/each}
-      </select>
-      <select bind:value={side} data-testid="filter-side" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
-        <option value="">Buy + sell</option>
-        <option value="BUY">Buy</option>
-        <option value="SELL">Sell</option>
-      </select>
-      <select bind:value={outcome} data-testid="filter-outcome" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
-        <option value="">All outcomes</option>
-        {#each outcomes as option}
-          <option value={option}>{option}</option>
-        {/each}
-      </select>
-    </div>
-
-    {#if validAddress}
-      <p class="mb-2 px-0.5 text-xs text-muted-foreground" data-testid="status">
-        {statusText}{statusTail}
-      </p>
-    {/if}
-
+  <main class="mx-auto min-h-0 min-w-0 w-full max-w-[1100px] px-4 pb-4 pt-3">
     {#if error}
       <p class="error mb-3 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600" data-testid="error">
         <span class="min-w-0 flex-1 break-words">{error.message}</span>
@@ -357,11 +503,11 @@
       </p>
     {/if}
 
-    <div class="overflow-hidden rounded-xl border-0 bg-card p-0 text-sm text-card-foreground ring-1 ring-[var(--hairline)]" role="table">
+    <div class="h-full min-w-0 overflow-hidden rounded-xl border-0 bg-card p-0 text-sm text-card-foreground ring-1 ring-[var(--hairline)]" role="table">
       <div
         bind:this={parentRef}
         on:scroll={handleScroll}
-        class="table-container h-[calc(100dvh-260px)] min-h-[300px] overflow-y-auto overflow-x-auto overscroll-contain"
+        class="table-container h-full min-h-0 overflow-y-auto overflow-x-auto overscroll-contain"
       >
         {#if loading}
           <div class="min-w-[980px]" data-testid="raw-loading">
@@ -394,20 +540,20 @@
                   data-testid="raw-row"
                   data-index={item.index}
                   role="row"
-                  class="absolute inset-x-0 top-0 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline px-3 py-1 text-[11px] leading-5 hover:brightness-[0.98]"
-                  style:backgroundColor={rawEventTint(item.row.eventSlug)}
+                  class="absolute inset-x-0 top-0 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline px-3 py-1 pl-4 text-[11px] leading-5 hover:bg-secondary/40"
+                  style:border-left={`4px solid ${rawEventAccent(item.row.eventSlug)}`}
                   style:transform={`translateY(${item.start}px)`}
                 >
                   <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={displayType(item.row.type)}>
                     {displayType(item.row.type)}
                   </div>
-                  <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={capitalize(item.row.side)}>
+                  <div role="cell" class={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] font-semibold ${sideClass(item.row.side)}`} title={capitalize(item.row.side)}>
                     {capitalize(item.row.side)}
                   </div>
                   <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={item.row.title}>
                     {item.row.title}
                   </div>
-                  <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={item.row.outcome}>
+                  <div role="cell" class={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] font-semibold ${outcomeClass(item.row.outcome)}`} title={item.row.outcome}>
                     {item.row.outcome}
                   </div>
                   <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-right tabular-nums text-foreground" title={String(item.row.price)}>
@@ -451,7 +597,6 @@
       </div>
     </div>
   </main>
-
   {#if showTop}
     <button
       type="button"
@@ -467,7 +612,7 @@
 
 {#snippet RawHeader()}
   <div
-    class="sticky top-0 z-10 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline bg-card px-3 py-1.5 text-[10px] font-semibold tracking-wide text-[var(--faint)]"
+    class="sticky top-0 z-10 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline bg-card py-1.5 pl-5 pr-3 text-[10px] font-semibold tracking-wide text-[var(--faint)]"
     role="row"
     data-testid="raw-header"
   >
@@ -492,7 +637,7 @@
 {/snippet}
 
 {#snippet RawSkeleton()}
-  <div class="grid h-[33px] grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] items-center gap-2 px-3 py-1">
+  <div class="grid h-[33px] grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] items-center gap-2 py-1 pl-5 pr-3">
     <div class="h-3 w-10 animate-pulse rounded-md bg-muted"></div>
     <div class="h-3 w-8 animate-pulse rounded-md bg-muted"></div>
     <div class="h-3 w-[82%] animate-pulse rounded-md bg-muted"></div>
