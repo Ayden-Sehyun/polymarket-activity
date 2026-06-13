@@ -10,7 +10,7 @@
     type Cursor,
     type Side,
   } from './api'
-  import { formatMonthYear, formatTimeShort, shortHash } from './format'
+  import { formatTimeShort, shortHash } from './format'
 
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
   const ROW_HEIGHT = 33
@@ -19,7 +19,7 @@
   const REFRESH_INTERVAL_MS = 15_000
 
   const TYPE_OPTIONS: { value: ActivityType | ''; label: string }[] = [
-    { value: '', label: 'All types' },
+    { value: '', label: 'All Types' },
     { value: 'TRADE', label: 'Trade' },
     { value: 'REDEEM', label: 'Redeem' },
     { value: 'CONVERSION', label: 'Convert' },
@@ -30,14 +30,29 @@
 
   const txHref = (hash: string) => `https://polygonscan.com/tx/${hash}`
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
-  const writeAddressToUrl = (nextAddress: string) => {
-    const url = new URL(window.location.href)
-    if (nextAddress) url.searchParams.set('address', nextAddress)
-    else url.searchParams.delete('address')
-    history.replaceState(null, '', url)
-  }
   const capitalize = (s: string) => (s ? s[0] + s.slice(1).toLowerCase() : s)
   const displayType = (value: ActivityType) => (value === 'CONVERSION' ? 'Convert' : capitalize(value))
+  const normalizeDate = (date: string) => date.replace(/\bJune\b/, 'Jun').replace(/\bMay\b/, 'May')
+  const compactWeatherTitle = (title: string): { city: string; temp: string; date: string; low: boolean } | null => {
+    const weather = title.match(
+      /^Will the (highest|lowest) temperature in (.+?) be (between )?(.+?)(?: or (below|higher))? on (.+?)\?$/,
+    )
+    if (!weather) {
+      const convertWeather = title.match(/^(Highest|Lowest) temperature in (.+?) on (.+?)\?$/)
+      if (!convertWeather) return null
+      const [, highLow, city, rawDate] = convertWeather
+      return { city: city.trim(), temp: '--', date: normalizeDate(rawDate.trim()), low: highLow === 'Lowest' }
+    }
+
+    const [, highLow, city, between, rawTemp, direction, rawDate] = weather
+    const temp = rawTemp
+      .replace(/\s+/g, ' ')
+      .replace(/(\d+)\s*-\s*(\d+)/, '$1-$2')
+      .trim()
+    const qualifier = between ? temp : direction === 'below' ? `<=${temp}` : direction === 'higher' ? `>=${temp}` : temp
+    const date = normalizeDate(rawDate.trim())
+    return { city: city.trim(), temp: qualifier, date, low: highLow === 'lowest' }
+  }
 
   const rawEventAccent = (eventSlug: string) => {
     let hash = 0
@@ -59,20 +74,6 @@
         ? 'text-red-600'
         : 'text-foreground'
 
-  async function fetchOldestActivity(nextAddress: string, signal?: AbortSignal): Promise<Activity | null> {
-    const params = new URLSearchParams({
-      user: nextAddress,
-      limit: '1',
-      offset: '0',
-      sortDirection: 'ASC',
-    })
-    const res = await fetch(`https://data-api.polymarket.com/activity?${params}`, { signal })
-    if (!res.ok) throw new Error(`data-api ${res.status}`)
-    const items = (await res.json()) as Activity[]
-    return items[0] ?? null
-  }
-
-  let addressInput = addressFromUrl()
   let address = addressFromUrl()
   let type: ActivityType | '' = ''
   let side: Side | '' = ''
@@ -83,8 +84,6 @@
   let fetching = false
   let fetchingNextPage = false
   let error: Error | null = null
-  let joinedActivity: Activity | null = null
-  let joinedFetching = false
   let pusdBalance: number | null = null
   let pusdBalanceFetching = false
   let theme: 'light' | 'dark' = 'light'
@@ -92,11 +91,14 @@
   let viewportHeight = 300
   let showTop = false
   let requestSeq = 0
+  let now = Date.now()
+  let lastRefreshAt: number | null = null
+  let clockTimer: number | undefined
   let refreshTimer: number | undefined
   let activeController: AbortController | null = null
   let refreshController: AbortController | null = null
-  let joinedController: AbortController | null = null
   let balanceController: AbortController | null = null
+  let balanceAddress = ''
   let parentRef: HTMLDivElement
 
   $: validAddress = ADDRESS_RE.test(address)
@@ -111,16 +113,10 @@
     index: startIndex + i,
     start: (startIndex + i) * ROW_HEIGHT,
   }))
-  $: statusTail = fetching
-    ? ' · fetching…'
-    : nextCursor
-      ? ' · scroll for more'
-      : validAddress
-        ? ' · end of history'
-        : ''
-  $: statusText = rows.length === allRows.length
-    ? `${allRows.length} rows`
-    : `${rows.length} of ${allRows.length} loaded rows`
+  $: statusText = lastRefreshAt === null
+    ? 'REFRESHING'
+    : `${Math.max(0, Math.floor((now - lastRefreshAt) / 1000))}S SINCE REFRESH`
+  $: statusCursor = nextCursor ? 'more' : validAddress ? 'end' : ''
   $: empty = !loading && rows.length === 0
   $: profile = getProfile(allRows)
 
@@ -129,21 +125,24 @@
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
     theme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : prefersDark ? 'dark' : 'light'
     applyTheme(theme)
+    clockTimer = window.setInterval(() => {
+      now = Date.now()
+    }, 1000)
     return () => {
       activeController?.abort()
       refreshController?.abort()
-      joinedController?.abort()
       balanceController?.abort()
       if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
+      if (clockTimer !== undefined) window.clearInterval(clockTimer)
     }
   })
 
   onDestroy(() => {
     activeController?.abort()
     refreshController?.abort()
-    joinedController?.abort()
     balanceController?.abort()
     if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
+    if (clockTimer !== undefined) window.clearInterval(clockTimer)
   })
 
   $: void watchQueryKey(address, type, side)
@@ -190,6 +189,7 @@
     const seq = ++requestSeq
     pages = []
     nextCursor = { offset: 0 }
+    lastRefreshAt = null
     error = null
     fetching = false
     fetchingNextPage = false
@@ -200,14 +200,18 @@
       loading = false
       fetching = false
       fetchingNextPage = false
-      joinedActivity = null
       pusdBalance = null
       pusdBalanceFetching = false
+      balanceAddress = ''
       return
     }
     loading = true
-    void fetchJoined(seq)
-    void fetchBalance(seq)
+    const normalizedAddress = address.toLowerCase()
+    if (balanceAddress !== normalizedAddress) {
+      pusdBalance = null
+      balanceAddress = normalizedAddress
+      void fetchBalance(seq, normalizedAddress)
+    }
     await fetchInitialRows(seq)
     if (seq === requestSeq) startRefreshTimer(seq)
   }
@@ -230,6 +234,8 @@
       if (seq !== requestSeq) return
       pages = [page.items]
       nextCursor = page.items.length === INITIAL_PAGE_SIZE ? { offset: 0 } : undefined
+      lastRefreshAt = Date.now()
+      now = lastRefreshAt
       error = null
     } catch (err) {
       if (seq === requestSeq && !(err instanceof DOMException && err.name === 'AbortError')) {
@@ -250,34 +256,18 @@
     }
   }
 
-  async function fetchJoined(seq = requestSeq) {
-    joinedController?.abort()
-    const controller = new AbortController()
-    joinedController = controller
-    joinedFetching = true
-    try {
-      const row = await fetchOldestActivity(address.toLowerCase(), controller.signal)
-      if (seq === requestSeq) joinedActivity = row
-    } catch {
-      if (seq === requestSeq) joinedActivity = null
-    } finally {
-      if (seq === requestSeq) joinedFetching = false
-    }
-  }
-
-  async function fetchBalance(seq = requestSeq) {
+  async function fetchBalance(seq = requestSeq, fetchAddress = address.toLowerCase()) {
     balanceController?.abort()
     const controller = new AbortController()
     balanceController = controller
-    pusdBalance = null
     pusdBalanceFetching = true
     try {
-      const balance = await fetchPusdBalance(address.toLowerCase(), controller.signal)
-      if (seq === requestSeq) pusdBalance = balance
+      const balance = await fetchPusdBalance(fetchAddress, controller.signal)
+      if (seq === requestSeq && balanceAddress === fetchAddress) pusdBalance = balance
     } catch {
-      if (seq === requestSeq) pusdBalance = null
+      if (seq === requestSeq && balanceAddress === fetchAddress) pusdBalance = null
     } finally {
-      if (seq === requestSeq) pusdBalanceFetching = false
+      if (seq === requestSeq && balanceAddress === fetchAddress) pusdBalanceFetching = false
     }
   }
 
@@ -291,9 +281,14 @@
       const page = await fetchActivityPage(fetchAddress, { type, side }, { offset: 0 }, controller.signal)
       if (seq !== requestSeq) return
       pages = mergeLatestPage(pages, page.items)
+      lastRefreshAt = Date.now()
+      now = lastRefreshAt
       error = null
-      void fetchJoined(seq)
-      void fetchBalance(seq)
+      const normalizedAddress = address.toLowerCase()
+      if (balanceAddress !== normalizedAddress) {
+        balanceAddress = normalizedAddress
+        void fetchBalance(seq, normalizedAddress)
+      }
     } catch (err) {
       if (seq === requestSeq && !(err instanceof DOMException && err.name === 'AbortError')) {
         error = err instanceof Error ? err : new Error(String(err))
@@ -321,6 +316,8 @@
       if (seq !== requestSeq) return
       pages = [...pages, page.items]
       nextCursor = page.nextCursor
+      lastRefreshAt = Date.now()
+      now = lastRefreshAt
       error = null
     } catch (err) {
       if (seq === requestSeq && !(err instanceof DOMException && err.name === 'AbortError')) {
@@ -334,12 +331,6 @@
         maybeFetchMore()
       }
     }
-  }
-
-  function submitAddress() {
-    const next = addressInput.trim()
-    address = next
-    writeAddressToUrl(next)
   }
 
   function handleScroll() {
@@ -387,10 +378,6 @@
     }).format(value)
   }
 
-  function externalLinkIcon() {
-    return 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6 M15 3h6v6 M10 14 21 3'
-  }
-
   function applyTheme(nextTheme: 'light' | 'dark') {
     document.documentElement.classList.toggle('dark', nextTheme === 'dark')
     document.documentElement.style.colorScheme = nextTheme
@@ -403,30 +390,41 @@
   }
 </script>
 
-<div class="grid h-[100dvh] min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] text-foreground">
-  <header class="sticky top-0 z-30 border-b border-hairline bg-[var(--page)]/95 backdrop-blur supports-[backdrop-filter]:bg-[var(--page)]/85">
-    <div class="mx-auto flex max-w-[1100px] flex-col gap-2 px-4 py-2">
-      <div class="flex items-center gap-2">
-        <form class="flex min-w-0 flex-1 items-center gap-2" on:submit|preventDefault={submitAddress}>
-          <input
-            bind:value={addressInput}
-            spellcheck="false"
-            autocapitalize="none"
-            autocomplete="off"
-            autocorrect="off"
-            placeholder="0x… proxy wallet address"
-            data-testid="address-input"
-            class="h-10 min-w-0 flex-1 rounded-full border border-transparent bg-secondary px-3 py-1 text-base outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:ring-3 focus-visible:ring-ring/50 md:h-9"
-          />
-          <button type="submit" class="h-10 shrink-0 rounded-full bg-[var(--brand)] px-4 text-sm font-medium text-white hover:bg-[var(--brand-hover)] md:h-9">
-            Load
-          </button>
-        </form>
+<div class="grid h-[100dvh] min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] font-mono text-foreground">
+  <header class="sticky top-0 z-30 border-x border-t border-hairline bg-card md:mx-auto md:w-full md:max-w-[1100px]">
+    <div class="flex flex-col">
+      <div class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {#if validAddress}
+          <span class="ui-top-cell flex max-w-52 shrink-0 items-center truncate border-r border-hairline font-semibold text-foreground" data-testid="profile-name">{profile.name}</span>
+          <span class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono text-muted-foreground">{shortHash(address)}</span>
+          <span class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono text-[var(--secondary-text)]" data-testid="pusd-balance">
+            {#if pusdBalance !== null}
+              {formatPusdBalance(pusdBalance)} PUSD
+            {:else if pusdBalanceFetching}
+              PUSD …
+            {:else}
+              PUSD --
+            {/if}
+          </span>
+          <p
+            class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono uppercase text-[var(--secondary-text)]"
+            data-testid="status"
+            data-shown={rows.length}
+            data-total={allRows.length}
+            data-cursor={statusCursor}
+          >
+            {statusText}
+          </p>
+        {:else}
+          <div class="ui-top-cell flex min-w-0 flex-1 items-center font-mono uppercase text-[var(--secondary-text)]">
+            Address required
+          </div>
+        {/if}
         <button
           type="button"
           data-testid="theme-toggle"
           aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          class="h-10 shrink-0 rounded-full border border-hairline bg-card px-3 text-sm font-medium text-foreground hover:bg-secondary md:h-9"
+          class="ui-top-cell shrink-0 bg-card font-mono font-semibold uppercase text-foreground hover:bg-secondary"
           on:click={toggleTheme}
         >
           {theme === 'dark' ? 'Light' : 'Dark'}
@@ -434,83 +432,58 @@
       </div>
 
       {#if validAddress}
-        <div class="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between md:gap-3">
-          <div class="flex min-w-0 items-center gap-2">
-            <span class="truncate font-medium text-foreground" data-testid="profile-name">{profile.name}</span>
-            <span class="shrink-0 text-[var(--faint)]">/</span>
-            <span class="shrink-0 font-mono">{shortHash(address)}</span>
-            <span class="shrink-0 text-[var(--faint)]">/</span>
-            <span class="shrink-0 text-[var(--secondary-text)]" data-testid="profile-joined">
-              {#if joinedActivity}
-                Joined {formatMonthYear(joinedActivity.timestamp)}
-              {:else if joinedFetching}
-                Joined …
-              {:else}
-                &nbsp;
-              {/if}
-            </span>
-            <span class="shrink-0 text-[var(--faint)]">/</span>
-            <span class="shrink-0 font-mono text-[var(--secondary-text)]" data-testid="pusd-balance">
-              {#if pusdBalance !== null}
-                {formatPusdBalance(pusdBalance)} pUSD
-              {:else if pusdBalanceFetching}
-                pUSD …
-              {:else}
-                pUSD --
-              {/if}
-            </span>
-          </div>
-          <p class="shrink-0 font-mono text-[11px] text-muted-foreground" data-testid="status">
-            {statusText}{statusTail}
-          </p>
+        <div class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
+            <select bind:value={type} data-testid="filter-type" aria-label="Activity type" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            {#each TYPE_OPTIONS as option}
+              <option value={option.value}>{option.label}</option>
+            {/each}
+            </select>
+          </label>
+          <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
+            <select bind:value={side} data-testid="filter-side" aria-label="Trade side" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <option value="">Buy + Sell</option>
+            <option value="BUY">Buy</option>
+            <option value="SELL">Sell</option>
+            </select>
+          </label>
+          <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
+            <select bind:value={outcome} data-testid="filter-outcome" aria-label="Outcome" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <option value="">Yes + No</option>
+            {#each outcomes as option}
+              <option value={option}>{option}</option>
+            {/each}
+            </select>
+          </label>
         </div>
       {/if}
 
-      <div class="-mx-4 flex gap-2 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <select bind:value={type} data-testid="filter-type" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
-          {#each TYPE_OPTIONS as option}
-            <option value={option.value}>{option.label}</option>
-          {/each}
-        </select>
-        <select bind:value={side} data-testid="filter-side" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
-          <option value="">Buy + sell</option>
-          <option value="BUY">Buy</option>
-          <option value="SELL">Sell</option>
-        </select>
-        <select bind:value={outcome} data-testid="filter-outcome" class="pill-select h-9 shrink-0 cursor-pointer rounded-full border border-hairline bg-card pl-3.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30">
-          <option value="">All outcomes</option>
-          {#each outcomes as option}
-            <option value={option}>{option}</option>
-          {/each}
-        </select>
-      </div>
-
       {#if address !== '' && !validAddress}
-        <div class="text-xs text-destructive" data-testid="hint">
-          <span class="hint">enter a 0x… address (40 hex chars)</span>
+        <div class="ui-message border-b border-hairline uppercase text-destructive" data-testid="hint">
+          <span class="hint">Enter a 0x… address (40 hex chars)</span>
         </div>
       {/if}
     </div>
   </header>
 
-  <main class="mx-auto min-h-0 min-w-0 w-full max-w-[1100px] px-4 pb-4 pt-3">
+  <main class="mx-auto min-h-0 min-w-0 w-full max-w-[1100px] px-0 pb-0 pt-0 md:px-0">
     {#if error}
-      <p class="error mb-3 flex items-center gap-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600" data-testid="error">
+      <p class="error ui-message flex items-center gap-3 border-x border-b border-red-600 bg-red-50 font-mono uppercase text-red-600 dark:bg-red-950/30" data-testid="error">
         <span class="min-w-0 flex-1 break-words">{error.message}</span>
-        <button type="button" class="h-7 shrink-0 rounded-md bg-destructive px-2.5 text-[0.8rem] font-medium text-white" on:click={retry}>
+        <button type="button" class="ui-action shrink-0 border border-red-600 bg-destructive text-white" on:click={retry}>
           retry
         </button>
       </p>
     {/if}
 
-    <div class="h-full min-w-0 overflow-hidden rounded-xl border-0 bg-card p-0 text-sm text-card-foreground ring-1 ring-[var(--hairline)]" role="table">
+    <div class="h-full min-w-0 overflow-hidden border-x border-b border-hairline bg-card p-0 text-sm text-card-foreground" role="table">
       <div
         bind:this={parentRef}
         on:scroll={handleScroll}
         class="table-container h-full min-h-0 overflow-y-auto overflow-x-auto overscroll-contain"
       >
         {#if loading}
-          <div class="min-w-[980px]" data-testid="raw-loading">
+          <div class="min-w-[874px]" data-testid="raw-loading">
             {@render RawHeader()}
             <div class="divide-y divide-hairline">
               {#each Array(18) as _}
@@ -521,66 +494,73 @@
         {/if}
 
         {#if empty && validAddress}
-          <div class="grid place-items-center px-4 py-16 text-sm text-muted-foreground" data-testid="empty">
+          <div class="ui-empty grid place-items-center text-muted-foreground" data-testid="empty">
             No rows.
           </div>
         {/if}
         {#if empty && !validAddress}
-          <div class="grid place-items-center px-4 py-16 text-center text-sm text-muted-foreground" data-testid="prompt">
-            Enter a wallet address above to view its activity.
+          <div class="ui-empty grid place-items-center text-center text-muted-foreground" data-testid="prompt">
+            Add ?address=0x… to the URL to view activity.
           </div>
         {/if}
 
         {#if !loading && !empty}
-          <div class="min-w-[980px]" data-testid="raw-table">
+          <div class="min-w-[874px]" data-testid="raw-table">
             {@render RawHeader()}
             <div class="relative" style:height={`${totalSize}px`}>
               {#each virtualRows as item (activityKey(item.row))}
+                {@const titleParts = compactWeatherTitle(item.row.title)}
                 <div
                   data-testid="raw-row"
                   data-index={item.index}
                   role="row"
-                  class="absolute inset-x-0 top-0 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline px-3 py-1 pl-4 text-[11px] leading-5 hover:bg-secondary/40"
-                  style:border-left={`4px solid ${rawEventAccent(item.row.eventSlug)}`}
-                  style:transform={`translateY(${item.start}px)`}
+                  class="raw-grid raw-row group absolute inset-x-0 top-0 grid border-b border-hairline hover:bg-secondary/60"
+                  style={`transform: translateY(${item.start}px); --row-accent: ${rawEventAccent(item.row.eventSlug)}`}
                 >
-                  <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={displayType(item.row.type)}>
-                    {displayType(item.row.type)}
+                  <div
+                    role="cell"
+                    class="raw-cell raw-sticky-city font-mono text-foreground"
+                    title={item.row.title}
+                  >
+                    {titleParts?.city ?? item.row.title}
                   </div>
-                  <div role="cell" class={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] font-semibold ${sideClass(item.row.side)}`} title={capitalize(item.row.side)}>
+                  <div role="cell" class="raw-cell raw-sticky-temp justify-end font-mono text-right tabular-nums text-foreground" title={item.row.title}>
+                    {titleParts ? `${titleParts.temp}${titleParts.low ? ' low' : ''}` : '--'}
+                  </div>
+                  <div role="cell" class="raw-cell raw-sticky-date justify-end font-mono text-right tabular-nums text-[var(--secondary-text)]" title={item.row.title}>
+                    {titleParts?.date ?? '--'}
+                  </div>
+                  <div role="cell" class={`raw-cell font-mono font-semibold ${sideClass(item.row.side)}`} title={capitalize(item.row.side)}>
                     {capitalize(item.row.side)}
                   </div>
-                  <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={item.row.title}>
-                    {item.row.title}
+                  <div role="cell" class="raw-cell font-mono text-foreground" title={displayType(item.row.type)}>
+                    {displayType(item.row.type)}
                   </div>
-                  <div role="cell" class={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] font-semibold ${outcomeClass(item.row.outcome)}`} title={item.row.outcome}>
+                  <div role="cell" class={`raw-cell font-mono font-semibold ${outcomeClass(item.row.outcome)}`} title={item.row.outcome}>
                     {item.row.outcome}
                   </div>
-                  <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-right tabular-nums text-foreground" title={String(item.row.price)}>
+                  <div role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(item.row.price)}>
                     {#if item.row.type === 'TRADE' && item.row.price > 0}
                       {@render DecimalNumber(item.row.price, 3)}
                     {:else}
                       <span class="text-[var(--faint)]">--</span>
                     {/if}
                   </div>
-                  <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-right tabular-nums text-foreground" title={String(item.row.usdcSize)}>
+                  <div role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(item.row.usdcSize)}>
                     {@render DecimalNumber(item.row.usdcSize, 5)}
                   </div>
-                  <div role="cell" class="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={String(item.row.timestamp)}>
+                  <div role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(item.row.timestamp)}>
                     {formatTimeShort(item.row.timestamp)}
                   </div>
-                  <div role="cell" class="flex min-w-0 justify-end overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[10.5px] text-foreground" title={item.row.transactionHash}>
+                  <div role="cell" class="raw-cell justify-end font-mono text-right text-foreground" title={item.row.transactionHash}>
                     <a
                       href={txHref(item.row.transactionHash)}
                       target="_blank"
                       rel="noreferrer"
                       title={item.row.transactionHash}
-                      class="inline-flex size-6 items-center justify-center rounded-full text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
+                      class="raw-link-anchor text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
                     >
-                      <svg class="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d={externalLinkIcon()} />
-                      </svg>
-                      <span class="sr-only">Open transaction on Polygonscan</span>
+                      LINK
                     </a>
                   </div>
                 </div>
@@ -590,7 +570,7 @@
         {/if}
 
         {#if fetchingNextPage}
-          <div class="grid place-items-center py-4 text-xs text-muted-foreground" data-testid="loading-more">
+          <div class="ui-message grid place-items-center py-4 text-muted-foreground" data-testid="loading-more">
             Loading more…
           </div>
         {/if}
@@ -602,7 +582,7 @@
       type="button"
       data-testid="back-to-top"
       on:click={backToTop}
-      class="fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-lg transition-transform hover:scale-105"
+      class="ui-floating-action fixed bottom-5 left-1/2 z-40 flex min-w-28 -translate-x-1/2 touch-manipulation items-center justify-center gap-1.5 border border-hairline bg-primary font-mono text-primary-foreground shadow-lg"
     >
       <span aria-hidden="true">↑</span>
       Back to top
@@ -612,17 +592,19 @@
 
 {#snippet RawHeader()}
   <div
-    class="sticky top-0 z-10 grid grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] gap-2 border-b border-hairline bg-card py-1.5 pl-5 pr-3 text-[10px] font-semibold tracking-wide text-[var(--faint)]"
+    class="raw-grid raw-head sticky top-0 z-10 grid border-b border-hairline bg-secondary"
     role="row"
     data-testid="raw-header"
   >
-    <div role="columnheader">Type</div>
+    <div role="columnheader" class="raw-sticky-city-head">City</div>
+    <div role="columnheader" class="raw-sticky-temp-head text-right tabular-nums">Temp</div>
+    <div role="columnheader" class="raw-sticky-date-head text-right tabular-nums">Date</div>
     <div role="columnheader">Side</div>
-    <div role="columnheader">Title</div>
+    <div role="columnheader">Type</div>
     <div role="columnheader">Outcome</div>
     <div role="columnheader" class="text-right tabular-nums">Price</div>
     <div role="columnheader" class="text-right tabular-nums">Amount pUSD</div>
-    <div role="columnheader">Time</div>
+    <div role="columnheader" class="text-right tabular-nums">Time</div>
     <div role="columnheader" class="text-right tabular-nums">Tx</div>
   </div>
 {/snippet}
@@ -637,7 +619,7 @@
 {/snippet}
 
 {#snippet RawSkeleton()}
-  <div class="grid h-[33px] grid-cols-[72px_56px_1fr_92px_74px_96px_128px_32px] items-center gap-2 py-1 pl-5 pr-3">
+  <div class="raw-grid grid items-center px-5 py-1" style:height="var(--h-row)">
     <div class="h-3 w-10 animate-pulse rounded-md bg-muted"></div>
     <div class="h-3 w-8 animate-pulse rounded-md bg-muted"></div>
     <div class="h-3 w-[82%] animate-pulse rounded-md bg-muted"></div>

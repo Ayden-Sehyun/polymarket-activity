@@ -61,10 +61,27 @@ async function runSweep(mode) {
 
   const statusText = async () =>
     (await page.locator('[data-testid="status"]').first().innerText()).replace(/\s+/g, ' ')
+  const statusCursor = async () =>
+    (await page.locator('[data-testid="status"]').first().getAttribute('data-cursor').catch(() => '')) || ''
   const rowCounts = async () => {
+    const attrs = await page.locator('[data-testid="status"]').first().evaluate((el) => ({
+      shown: el.getAttribute('data-shown'),
+      total: el.getAttribute('data-total'),
+    })).catch(() => ({ shown: null, total: null }))
     const text = await statusText()
+    if (attrs.total !== null) {
+      return { shown: +(attrs.shown ?? attrs.total), total: +attrs.total, text }
+    }
     let m = text.match(/(\d+) of (\d+) loaded rows/)
     if (m) return { shown: +m[1], total: +m[2], text }
+    m = text.match(/(\d+)\/(\d+) ROWS/)
+    if (m) return { shown: +m[1], total: +m[2], text }
+    m = text.match(/(\d+) ROWS/)
+    if (m) return { shown: +m[1], total: +m[1], text }
+    m = text.match(/rows=(\d+)\/(\d+)/)
+    if (m) return { shown: +m[1], total: +m[2], text }
+    m = text.match(/rows=(\d+)/)
+    if (m) return { shown: +m[1], total: +m[1], text }
     m = text.match(/(\d+) rows/)
     return { shown: m ? +m[1] : 0, total: m ? +m[1] : 0, text }
   }
@@ -77,14 +94,16 @@ async function runSweep(mode) {
         const cells = [...el.querySelectorAll('[role="cell"]')]
         const t = (i) => cells[i]?.textContent?.trim() ?? ''
         return {
-          type: t(0),
-          side: t(1),
-          title: t(2),
-          outcome: t(3),
-          price: t(4),
-          amount: t(5),
-          time: t(6),
-          txHref: cells[7]?.querySelector('a')?.href ?? '',
+          title: t(0),
+          temp: t(1),
+          date: t(2),
+          side: t(3),
+          type: t(4),
+          outcome: t(5),
+          price: t(6),
+          amount: t(7),
+          time: t(8),
+          txHref: cells[9]?.querySelector('a')?.href ?? '',
         }
       }),
     )
@@ -102,7 +121,7 @@ async function runSweep(mode) {
           if (rows.length === 0) return false
           if (!want) return true
           return rows.every((r) => {
-            const t = r.querySelector('[role="cell"]')?.textContent?.trim()
+            const t = r.querySelectorAll('[role="cell"]')[4]?.textContent?.trim()
             return t === want
           })
         },
@@ -128,13 +147,12 @@ async function runSweep(mode) {
   await page.waitForSelector(RAW_ROW, { timeout: 20000 })
   await sleep(900)
   let rc = await rowCounts()
-  const inputPrefilled = await page.inputValue('[data-testid="address-input"]')
   const previewRequest = apiCalls.some(
     (c) => c.user === DEFAULT && c.offset === '0' && c.sortDirection === 'DESC' && c.count === 50,
   )
   ok(
     'initial load via ?address= param (50-row LCP preview)',
-    rc.total >= 50 && inputPrefilled === DEFAULT && previewRequest,
+    rc.total >= 50 && previewRequest,
     `${rc.total} rows; preview=${previewRequest}`,
   )
 
@@ -171,7 +189,7 @@ async function runSweep(mode) {
   let stall = 0
   for (let i = 0; i < 90; i++) {
     rc = await rowCounts()
-    if (rc.total >= 3600 || /end of history/.test(rc.text)) break
+    if (rc.total >= 3600 || /end of history|cursor=end| END/.test(rc.text)) break
     await scrollContainer('bottom')
     await sleep(400)
     rc = await rowCounts()
@@ -261,21 +279,19 @@ async function runSweep(mode) {
   )
   await outcomeSelect.selectOption('')
 
-  // ---- 8. address input → different wallet
-  await page.fill('[data-testid="address-input"]', OTHER)
-  await page.click('button:has-text("Load")')
+  // ---- 8. URL address param → different wallet
+  await page.goto(`${APP_URL}/?address=${OTHER}`)
   await sleep(3000)
   rc = await rowCounts()
   const urlParam = await page.evaluate(() => new URLSearchParams(location.search).get('address'))
   ok(
-    'address input loads a different wallet + URL becomes shareable',
+    'URL address param loads a different wallet',
     rc.total > 0 && apiCalls.some((c) => c.user === OTHER) && urlParam === OTHER,
     `${rc.total} rows for ${OTHER.slice(0, 10)}…, ?address=${(urlParam || '').slice(0, 10)}…`,
   )
 
   // ---- probes ----
-  await page.fill('[data-testid="address-input"]', 'abc')
-  await page.click('button:has-text("Load")')
+  await page.goto(`${APP_URL}/?address=abc`)
   await sleep(600)
   ok(
     '🔍 invalid address → hint, no request, no crash',
@@ -284,19 +300,19 @@ async function runSweep(mode) {
   )
 
   const EMPTY = '0x0000000000000000000000000000000000000001'
-  await page.fill('[data-testid="address-input"]', EMPTY)
-  await page.click('button:has-text("Load")')
+  await page.goto(`${APP_URL}/?address=${EMPTY}`)
   await sleep(2500)
   let txt = await statusText()
+  let cursor = await statusCursor()
   ok(
     '🔍 wallet with no history → "No rows." + end of history',
-    (await page.locator('[data-testid="empty"]').count()) === 1 && /end of history/.test(txt),
+    (await page.locator('[data-testid="empty"]').count()) === 1 && (cursor === 'end' || /end of history|cursor=end| END/.test(txt)),
     `${(await page.locator('[data-testid="empty"]').innerText().catch(() => '')).trim()} | ${txt.slice(-40)}`,
   )
 
-  await page.fill('[data-testid="address-input"]', '0x' + DEFAULT.slice(2).toUpperCase())
-  await page.click('button:has-text("Load")')
-  await sleep(2500)
+  await page.goto(`${APP_URL}/?address=${'0x' + DEFAULT.slice(2).toUpperCase()}`)
+  await waitForRows()
+  await sleep(500)
   rc = await rowCounts()
   ok('🔍 uppercase-hex address still loads', rc.total > 0, `${rc.total} rows`)
 
@@ -304,6 +320,7 @@ async function runSweep(mode) {
     await typeSelect.selectOption(v)
     await sleep(120)
   }
+  await waitForRows()
   await sleep(2000)
   rc = await rowCounts()
   const errs = consoleIssues.filter((c) => !c.includes('React DevTools'))
@@ -327,9 +344,6 @@ async function runSweep(mode) {
       `table scrollWidth=${tableScrollW}, clientWidth=${tableClientW}`,
     )
 
-    const inputFs = await page.$eval('[data-testid="address-input"]', (el) => parseFloat(getComputedStyle(el).fontSize))
-    ok('mobile: address input ≥16px (iOS zoom guard)', inputFs >= 16, `${inputFs}px`)
-
     const rowBox = await page.locator(RAW_ROW).first().boundingBox()
     ok('mobile: dense raw row is compact', !!rowBox && rowBox.height <= 36, `${rowBox ? Math.round(rowBox.height) : 0}px`)
 
@@ -339,12 +353,12 @@ async function runSweep(mode) {
     await page.screenshot({ path: '/tmp/pm_qa_mobile_rows.png' })
     await scrollContainer(0)
   } else {
-    const firstTypeText = (await page.locator(`${RAW_ROW} [role="cell"]`).first().innerText().catch(() => '')).trim()
-    const headerVisible = await page.locator('[data-testid="raw-header"] [role="columnheader"]:has-text("Type")').first().isVisible()
+    const firstCityText = (await page.locator(`${RAW_ROW} [role="cell"]`).first().innerText().catch(() => '')).trim()
+    const cityHeaderVisible = await page.locator('[data-testid="raw-header"] [role="columnheader"]:has-text("City")').first().isVisible()
     ok(
-      'desktop: raw type shown as first column',
-      firstTypeText.length > 0 && headerVisible,
-      `type="${firstTypeText}", header vis=${headerVisible}`,
+      'desktop: raw city shown as sticky first column',
+      firstCityText.length > 0 && cityHeaderVisible,
+      `city="${firstCityText.slice(0, 36)}", header vis=${cityHeaderVisible}`,
     )
     await page.screenshot({ path: '/tmp/pm_qa_desktop.png' })
   }
