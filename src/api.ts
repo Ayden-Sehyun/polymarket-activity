@@ -22,6 +22,17 @@ export interface Activity {
   pseudonym: string
 }
 
+export interface EventTag {
+  label: string
+  slug: string
+}
+
+export interface EventMetadata {
+  slug: string
+  category: string | null
+  tags: EventTag[]
+}
+
 export interface ActivityFilters {
   type?: ActivityType | ''
   side?: Side | ''
@@ -44,6 +55,7 @@ export const INITIAL_PAGE_SIZE = 50
 const MAX_OFFSET = 3000
 
 const BASE = 'https://data-api.polymarket.com/activity'
+const GAMMA_EVENT_BASE = 'https://gamma-api.polymarket.com/events/slug'
 const PUSD_TOKEN = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
 const PUSD_DECIMALS = 6
 const POLYGON_RPC_URLS = [
@@ -89,6 +101,17 @@ export async function fetchActivityPage(
 /** Rows can repeat at time-window boundaries; this key is unique enough to drop them. */
 export function activityKey(a: Activity): string {
   return [a.transactionHash, a.type, a.asset, a.side, a.outcomeIndex, a.size, a.timestamp].join('|')
+}
+
+export async function fetchEventMetadata(eventSlug: string, signal?: AbortSignal): Promise<EventMetadata> {
+  const res = await fetch(`${GAMMA_EVENT_BASE}/${encodeURIComponent(eventSlug)}`, { signal })
+  if (!res.ok) throw new Error(`gamma ${res.status}: ${await res.text()}`)
+  const event = (await res.json()) as Partial<EventMetadata>
+  return {
+    slug: event.slug ?? eventSlug,
+    category: event.category ?? null,
+    tags: Array.isArray(event.tags) ? event.tags.filter((tag): tag is EventTag => Boolean(tag.label && tag.slug)) : [],
+  }
 }
 
 export async function fetchPusdBalance(address: string, signal?: AbortSignal): Promise<number> {

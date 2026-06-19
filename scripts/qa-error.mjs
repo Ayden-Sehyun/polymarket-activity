@@ -27,14 +27,14 @@ await page.waitForFunction(
     const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
     if (rows.length === 0) return false
     return rows.every((r) => {
-      const t = r.querySelector('[role="cell"]')?.textContent?.trim()
+      const t = r.querySelector('[data-testid="cell-type"]')?.textContent?.trim()
       return t === 'Redeem'
     })
   },
   { timeout: 15000 },
 ).catch(() => {})
 const types = await page.$$eval(ROW, (rows) =>
-  [...new Set(rows.map((r) => r.querySelector('[role="cell"]')?.textContent?.trim()))],
+  [...new Set(rows.map((r) => r.querySelector('[data-testid="cell-type"]')?.textContent?.trim()))],
 )
 const errGone = (await page.locator('[data-testid="error"]').count()) === 0
 console.log(

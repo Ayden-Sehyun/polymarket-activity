@@ -1,21 +1,20 @@
 <script lang="ts">
-  import { onDestroy, onMount, tick } from 'svelte'
+  import { onDestroy, onMount } from 'svelte'
   import {
     activityKey,
     fetchActivityPage,
+    fetchEventMetadata,
     fetchPusdBalance,
     INITIAL_PAGE_SIZE,
     type Activity,
     type ActivityType,
     type Cursor,
+    type EventMetadata,
     type Side,
   } from './api'
   import { formatTimeShort, shortHash } from './format'
 
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
-  const ROW_HEIGHT = 33
-  const OVERSCAN = 12
-  const LOAD_AHEAD_PX = 4000
   const REFRESH_INTERVAL_MS = 15_000
 
   const TYPE_OPTIONS: { value: ActivityType | ''; label: string }[] = [
@@ -27,11 +26,76 @@
     { value: 'MERGE', label: 'Merge' },
     { value: 'REWARD', label: 'Reward' },
   ]
+  const CATEGORY_LABELS: Record<string, string> = {
+    weather: 'Weather',
+    politics: 'Politics',
+    sports: 'Sports',
+    crypto: 'Crypto',
+    economy: 'Economy',
+    finance: 'Finance',
+    business: 'Business',
+    culture: 'Culture',
+    entertainment: 'Entertainment',
+    technology: 'Technology',
+    science: 'Science',
+    news: 'News',
+    world: 'World',
+    'us-current-affairs': 'US Current Affairs',
+    'international-affairs': 'International Affairs',
+  }
+  const CATEGORY_PRIORITY = [
+    'weather',
+    'politics',
+    'sports',
+    'crypto',
+    'economy',
+    'finance',
+    'business',
+    'culture',
+    'entertainment',
+    'technology',
+    'science',
+    'news',
+    'world',
+    'us-current-affairs',
+    'international-affairs',
+  ]
+  const CATEGORY_ALIASES: Record<string, keyof typeof CATEGORY_LABELS> = {
+    elections: 'politics',
+    'us-election': 'politics',
+    'usa-election': 'politics',
+    'us-presidential-election': 'politics',
+    '2024-presidential-election': 'politics',
+    nba: 'sports',
+    nfl: 'sports',
+    mlb: 'sports',
+    nhl: 'sports',
+    ufc: 'sports',
+    soccer: 'sports',
+    football: 'sports',
+    tennis: 'sports',
+    golf: 'sports',
+    cricket: 'sports',
+    bitcoin: 'crypto',
+    ethereum: 'crypto',
+    solana: 'crypto',
+    altcoins: 'crypto',
+  }
+  const IGNORED_CATEGORY_TAGS = new Set(['all', 'hide-from-new', 'recurring'])
+  const CATEGORY_FETCH_CONCURRENCY = 6
+
+  type CategoryOption = { value: string; label: string }
 
   const txHref = (hash: string) => `https://polygonscan.com/tx/${hash}`
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
   const capitalize = (s: string) => (s ? s[0] + s.slice(1).toLowerCase() : s)
   const displayType = (value: ActivityType) => (value === 'CONVERSION' ? 'Convert' : capitalize(value))
+  const titleCase = (value: string) =>
+    value
+      .replace(/[-_]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase())
   const normalizeDate = (date: string) => date.replace(/\bJune\b/, 'Jun').replace(/\bMay\b/, 'May')
   const compactWeatherTitle = (title: string): { city: string; temp: string; date: string; low: boolean } | null => {
     const weather = title.match(
@@ -78,7 +142,9 @@
   let type: ActivityType | '' = ''
   let side: Side | '' = ''
   let outcome = ''
+  let category = ''
   let pages: Activity[][] = []
+  let eventCategories: Record<string, CategoryOption | null> = {}
   let nextCursor: Cursor | undefined = { offset: 0 }
   let loading = false
   let fetching = false
@@ -86,9 +152,6 @@
   let error: Error | null = null
   let pusdBalance: number | null = null
   let pusdBalanceFetching = false
-  let theme: 'light' | 'dark' = 'light'
-  let scrollTop = 0
-  let viewportHeight = 300
   let showTop = false
   let requestSeq = 0
   let now = Date.now()
@@ -98,33 +161,25 @@
   let activeController: AbortController | null = null
   let refreshController: AbortController | null = null
   let balanceController: AbortController | null = null
+  let categoryController: AbortController | null = null
   let balanceAddress = ''
   let parentRef: HTMLDivElement
+  let pendingCategorySlugs = new Set<string>()
 
   $: validAddress = ADDRESS_RE.test(address)
   $: allRows = dedupeRows(pages)
   $: outcomes = [...new Set(allRows.map((row) => row.outcome).filter(Boolean))].sort()
-  $: rows = outcome ? allRows.filter((row) => row.outcome === outcome) : allRows
-  $: totalSize = rows.length * ROW_HEIGHT
-  $: startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
-  $: endIndex = Math.min(rows.length, Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN)
-  $: virtualRows = rows.slice(startIndex, endIndex).map((row, i) => ({
-    row,
-    index: startIndex + i,
-    start: (startIndex + i) * ROW_HEIGHT,
-  }))
+  $: categoryOptions = getCategoryOptions(allRows, eventCategories)
+  $: rows = filterRows(allRows, outcome, category, eventCategories)
   $: statusText = lastRefreshAt === null
     ? 'REFRESHING'
     : `${Math.max(0, Math.floor((now - lastRefreshAt) / 1000))}S SINCE REFRESH`
   $: statusCursor = nextCursor ? 'more' : validAddress ? 'end' : ''
   $: empty = !loading && rows.length === 0
   $: profile = getProfile(allRows)
+  $: void hydrateEventCategories(allRows)
 
   onMount(() => {
-    const storedTheme = localStorage.getItem('theme')
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-    theme = storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : prefersDark ? 'dark' : 'light'
-    applyTheme(theme)
     clockTimer = window.setInterval(() => {
       now = Date.now()
     }, 1000)
@@ -132,6 +187,7 @@
       activeController?.abort()
       refreshController?.abort()
       balanceController?.abort()
+      categoryController?.abort()
       if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
       if (clockTimer !== undefined) window.clearInterval(clockTimer)
     }
@@ -141,6 +197,7 @@
     activeController?.abort()
     refreshController?.abort()
     balanceController?.abort()
+    categoryController?.abort()
     if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
     if (clockTimer !== undefined) window.clearInterval(clockTimer)
   })
@@ -179,6 +236,116 @@
     }
   }
 
+  function cityLabel(row: Activity) {
+    return compactWeatherTitle(row.title)?.city ?? row.title
+  }
+
+  function normalizeCategorySlug(value: string) {
+    return value.trim().toLowerCase().replace(/[_\s]+/g, '-')
+  }
+
+  function categoryOption(value: string): CategoryOption {
+    const normalized = normalizeCategorySlug(value)
+    const alias = CATEGORY_ALIASES[normalized] ?? normalized
+    return { value: alias, label: CATEGORY_LABELS[alias] ?? titleCase(alias) }
+  }
+
+  function categoryFromMetadata(metadata: EventMetadata): CategoryOption | null {
+    const tags = metadata.tags
+      .map((tag) => ({ label: tag.label, slug: normalizeCategorySlug(tag.slug) }))
+      .filter((tag) => tag.slug && !IGNORED_CATEGORY_TAGS.has(tag.slug))
+    const tagSlugs = new Set(tags.map((tag) => CATEGORY_ALIASES[tag.slug] ?? tag.slug))
+    for (const value of CATEGORY_PRIORITY) {
+      if (tagSlugs.has(value)) return categoryOption(value)
+    }
+    if (metadata.category) return categoryOption(metadata.category)
+    const fallback = tags[0]
+    return fallback ? categoryOption(fallback.slug || fallback.label) : null
+  }
+
+  function categoryFromActivity(row: Activity): CategoryOption | null {
+    const text = `${row.eventSlug} ${row.slug} ${row.title}`.toLowerCase()
+    if (/\btemperature\b|\bweather\b/.test(text)) return categoryOption('weather')
+    if (/\belection\b|\bmayoral\b|\bpresidential\b|\bsenate\b|\bcongress\b|\btrump\b|\bbiden\b|\bpolitics\b/.test(text)) {
+      return categoryOption('politics')
+    }
+    if (/\bbitcoin\b|\bbtc\b|\beth\b|\bethereum\b|\bsol\b|\bsolana\b|\bcrypto\b/.test(text)) return categoryOption('crypto')
+    if (/\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|\bufc\b|\bsoccer\b|\bfootball\b|\btennis\b|\bgolf\b|\bcricket\b/.test(text)) {
+      return categoryOption('sports')
+    }
+    if (/\bgdp\b|\bcpi\b|\binflation\b|\bfed\b|\brate-cut\b|\beconomy\b|\brecession\b/.test(text)) return categoryOption('economy')
+    return null
+  }
+
+  function getCategoryOptions(sourceRows: Activity[], sourceCategories: Record<string, CategoryOption | null>) {
+    const byValue = new Map<string, string>()
+    for (const row of sourceRows) {
+      const option = sourceCategories[row.eventSlug]
+      if (option) byValue.set(option.value, option.label)
+    }
+    return [...byValue.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }
+
+  function filterRows(
+    sourceRows: Activity[],
+    selectedOutcome: string,
+    selectedCategory: string,
+    sourceCategories: Record<string, CategoryOption | null>,
+  ) {
+    return sourceRows.filter((row) => {
+      if (selectedOutcome && row.outcome !== selectedOutcome) return false
+      if (selectedCategory && sourceCategories[row.eventSlug]?.value !== selectedCategory) return false
+      return true
+    })
+  }
+
+  function hydrateEventCategories(sourceRows: Activity[]) {
+    const nextInferred: Record<string, CategoryOption> = {}
+    const rowsBySlug = new Map<string, Activity>()
+    for (const row of sourceRows) {
+      if (!row.eventSlug || row.eventSlug in eventCategories || pendingCategorySlugs.has(row.eventSlug)) continue
+      if (!rowsBySlug.has(row.eventSlug)) rowsBySlug.set(row.eventSlug, row)
+    }
+
+    const missing: string[] = []
+    for (const [slug, row] of rowsBySlug) {
+      const inferred = categoryFromActivity(row)
+      if (inferred) nextInferred[slug] = inferred
+      else missing.push(slug)
+    }
+
+    if (Object.keys(nextInferred).length > 0) {
+      eventCategories = { ...eventCategories, ...nextInferred }
+    }
+    if (missing.length === 0) return
+    for (const slug of missing) pendingCategorySlugs.add(slug)
+    if (!categoryController || categoryController.signal.aborted) categoryController = new AbortController()
+    void fetchEventCategories(missing, categoryController.signal)
+  }
+
+  async function fetchEventCategories(slugs: string[], signal: AbortSignal) {
+    let index = 0
+    async function worker() {
+      while (index < slugs.length) {
+        const slug = slugs[index]
+        index += 1
+        try {
+          const metadata = await fetchEventMetadata(slug, signal)
+          eventCategories = { ...eventCategories, [slug]: categoryFromMetadata(metadata) }
+        } catch (err) {
+          if (!(err instanceof DOMException && err.name === 'AbortError')) {
+            eventCategories = { ...eventCategories, [slug]: null }
+          }
+        } finally {
+          pendingCategorySlugs.delete(slug)
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CATEGORY_FETCH_CONCURRENCY, slugs.length) }, worker))
+  }
+
   async function resetAndFetch() {
     activeController?.abort()
     refreshController?.abort()
@@ -193,7 +360,6 @@
     error = null
     fetching = false
     fetchingNextPage = false
-    scrollTop = 0
     showTop = false
     if (parentRef) parentRef.scrollTop = 0
     if (!validAddress) {
@@ -246,12 +412,6 @@
         loading = false
         fetching = false
         fetchingNextPage = false
-        await tick()
-        if (nextCursor) {
-          requestAnimationFrame(() => {
-            if (seq === requestSeq) void fetchNext(true)
-          })
-        }
       }
     }
   }
@@ -277,8 +437,9 @@
     const controller = new AbortController()
     refreshController = controller
     const fetchAddress = address.toLowerCase()
+    const refreshPageSize = allRows.length <= INITIAL_PAGE_SIZE ? INITIAL_PAGE_SIZE : undefined
     try {
-      const page = await fetchActivityPage(fetchAddress, { type, side }, { offset: 0 }, controller.signal)
+      const page = await fetchActivityPage(fetchAddress, { type, side }, { offset: 0 }, controller.signal, refreshPageSize)
       if (seq !== requestSeq) return
       pages = mergeLatestPage(pages, page.items)
       lastRefreshAt = Date.now()
@@ -327,25 +488,12 @@
       if (seq === requestSeq) {
         fetching = false
         fetchingNextPage = false
-        await tick()
-        maybeFetchMore()
       }
     }
   }
 
   function handleScroll() {
-    scrollTop = parentRef.scrollTop
-    viewportHeight = parentRef.clientHeight
-    maybeFetchMore()
-  }
-
-  function maybeFetchMore() {
-    if (!parentRef) return
     showTop = parentRef.scrollTop > 1200
-    const nearBottom = parentRef.scrollHeight - parentRef.scrollTop - parentRef.clientHeight < LOAD_AHEAD_PX
-    if (nearBottom && nextCursor && !fetchingNextPage && !error) {
-      void fetchNext(true)
-    }
   }
 
   function retry() {
@@ -355,7 +503,6 @@
 
   function backToTop() {
     if (parentRef) parentRef.scrollTop = 0
-    scrollTop = 0
     showTop = false
   }
 
@@ -376,17 +523,6 @@
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(value)
-  }
-
-  function applyTheme(nextTheme: 'light' | 'dark') {
-    document.documentElement.classList.toggle('dark', nextTheme === 'dark')
-    document.documentElement.style.colorScheme = nextTheme
-  }
-
-  function toggleTheme() {
-    theme = theme === 'dark' ? 'light' : 'dark'
-    localStorage.setItem('theme', theme)
-    applyTheme(theme)
   }
 </script>
 
@@ -420,15 +556,6 @@
             Address required
           </div>
         {/if}
-        <button
-          type="button"
-          data-testid="theme-toggle"
-          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          class="ui-top-cell shrink-0 bg-card font-mono font-semibold uppercase text-foreground hover:bg-secondary"
-          on:click={toggleTheme}
-        >
-          {theme === 'dark' ? 'Light' : 'Dark'}
-        </button>
       </div>
 
       {#if validAddress}
@@ -455,6 +582,14 @@
             {/each}
             </select>
           </label>
+          <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
+            <select bind:value={category} data-testid="filter-category" aria-label="Market category" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <option value="">All Categories</option>
+            {#each categoryOptions as option}
+              <option value={option.value}>{option.label}</option>
+            {/each}
+            </select>
+          </label>
         </div>
       {/if}
 
@@ -468,7 +603,7 @@
 
   <main class="mx-auto min-h-0 min-w-0 w-full max-w-[1100px] px-0 pb-0 pt-0 md:px-0">
     {#if error}
-      <p class="error ui-message flex items-center gap-3 border-x border-b border-red-600 bg-red-50 font-mono uppercase text-red-600 dark:bg-red-950/30" data-testid="error">
+      <p class="error ui-message flex items-center gap-3 border-x border-b border-red-600 bg-red-950/30 font-mono uppercase text-red-600" data-testid="error">
         <span class="min-w-0 flex-1 break-words">{error.message}</span>
         <button type="button" class="ui-action shrink-0 border border-red-600 bg-destructive text-white" on:click={retry}>
           retry
@@ -476,21 +611,21 @@
       </p>
     {/if}
 
-    <div class="h-full min-w-0 overflow-hidden border-x border-b border-hairline bg-card p-0 text-sm text-card-foreground" role="table">
+    <div class="h-full min-w-0 overflow-hidden border-x border-b border-hairline bg-card p-0 text-sm text-card-foreground">
       <div
         bind:this={parentRef}
         on:scroll={handleScroll}
         class="table-container h-full min-h-0 overflow-y-auto overflow-x-auto overscroll-contain"
       >
         {#if loading}
-          <div class="min-w-[874px]" data-testid="raw-loading">
+          <table class="raw-table" data-testid="raw-loading">
             {@render RawHeader()}
-            <div class="divide-y divide-hairline">
+            <tbody>
               {#each Array(18) as _}
                 {@render RawSkeleton()}
               {/each}
-            </div>
-          </div>
+            </tbody>
+          </table>
         {/if}
 
         {#if empty && validAddress}
@@ -505,73 +640,81 @@
         {/if}
 
         {#if !loading && !empty}
-          <div class="min-w-[874px]" data-testid="raw-table">
+          <table class="raw-table" data-testid="raw-table">
             {@render RawHeader()}
-            <div class="relative" style:height={`${totalSize}px`}>
-              {#each virtualRows as item (activityKey(item.row))}
-                {@const titleParts = compactWeatherTitle(item.row.title)}
-                <div
+            <tbody>
+              {#each rows as row, index (activityKey(row))}
+                {@const titleParts = compactWeatherTitle(row.title)}
+                <tr
                   data-testid="raw-row"
-                  data-index={item.index}
-                  role="row"
-                  class="raw-grid raw-row group absolute inset-x-0 top-0 grid border-b border-hairline hover:bg-secondary/60"
-                  style={`transform: translateY(${item.start}px); --row-accent: ${rawEventAccent(item.row.eventSlug)}`}
+                  data-category={eventCategories[row.eventSlug]?.value ?? ''}
+                  data-index={index}
+                  class="raw-row group"
+                  style={`--row-accent: ${rawEventAccent(row.eventSlug)}`}
                 >
-                  <div
+                  <td
                     role="cell"
                     class="raw-cell raw-sticky-city font-mono text-foreground"
-                    title={item.row.title}
+                    title={row.title}
                   >
-                    {titleParts?.city ?? item.row.title}
-                  </div>
-                  <div role="cell" class="raw-cell raw-sticky-temp justify-end font-mono text-right tabular-nums text-foreground" title={item.row.title}>
+                    {cityLabel(row)}
+                  </td>
+                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={row.title}>
                     {titleParts ? `${titleParts.temp}${titleParts.low ? ' low' : ''}` : '--'}
-                  </div>
-                  <div role="cell" class="raw-cell raw-sticky-date justify-end font-mono text-right tabular-nums text-[var(--secondary-text)]" title={item.row.title}>
+                  </td>
+                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-[var(--secondary-text)]" title={row.title}>
                     {titleParts?.date ?? '--'}
-                  </div>
-                  <div role="cell" class={`raw-cell font-mono font-semibold ${sideClass(item.row.side)}`} title={capitalize(item.row.side)}>
-                    {capitalize(item.row.side)}
-                  </div>
-                  <div role="cell" class="raw-cell font-mono text-foreground" title={displayType(item.row.type)}>
-                    {displayType(item.row.type)}
-                  </div>
-                  <div role="cell" class={`raw-cell font-mono font-semibold ${outcomeClass(item.row.outcome)}`} title={item.row.outcome}>
-                    {item.row.outcome}
-                  </div>
-                  <div role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(item.row.price)}>
-                    {#if item.row.type === 'TRADE' && item.row.price > 0}
-                      {@render DecimalNumber(item.row.price, 3)}
+                  </td>
+                  <td role="cell" class={`raw-cell font-mono font-semibold ${sideClass(row.side)}`} title={capitalize(row.side)}>
+                    {capitalize(row.side)}
+                  </td>
+                  <td role="cell" data-testid="cell-type" class="raw-cell font-mono text-foreground" title={displayType(row.type)}>
+                    {displayType(row.type)}
+                  </td>
+                  <td role="cell" class={`raw-cell font-mono font-semibold ${outcomeClass(row.outcome)}`} title={row.outcome}>
+                    {row.outcome}
+                  </td>
+                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(row.price)}>
+                    {#if row.type === 'TRADE' && row.price > 0}
+                      {@render DecimalNumber(row.price, 3)}
                     {:else}
                       <span class="text-[var(--faint)]">--</span>
                     {/if}
-                  </div>
-                  <div role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(item.row.usdcSize)}>
-                    {@render DecimalNumber(item.row.usdcSize, 5)}
-                  </div>
-                  <div role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(item.row.timestamp)}>
-                    {formatTimeShort(item.row.timestamp)}
-                  </div>
-                  <div role="cell" class="raw-cell justify-end font-mono text-right text-foreground" title={item.row.transactionHash}>
+                  </td>
+                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(row.usdcSize)}>
+                    {@render DecimalNumber(row.usdcSize, 5)}
+                  </td>
+                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(row.timestamp)}>
+                    {formatTimeShort(row.timestamp)}
+                  </td>
+                  <td role="cell" class="raw-cell justify-end font-mono text-right text-foreground" title={row.transactionHash}>
                     <a
-                      href={txHref(item.row.transactionHash)}
+                      href={txHref(row.transactionHash)}
                       target="_blank"
                       rel="noreferrer"
-                      title={item.row.transactionHash}
+                      title={row.transactionHash}
                       class="raw-link-anchor text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
                     >
                       LINK
                     </a>
-                  </div>
-                </div>
+                  </td>
+                </tr>
               {/each}
-            </div>
-          </div>
+            </tbody>
+          </table>
         {/if}
 
-        {#if fetchingNextPage}
-          <div class="ui-message grid place-items-center py-4 text-muted-foreground" data-testid="loading-more">
-            Loading more…
+        {#if !loading && validAddress && nextCursor}
+          <div class="ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground">
+            <button
+              type="button"
+              data-testid="load-more"
+              class="ui-action border border-hairline bg-card text-foreground hover:bg-secondary disabled:cursor-wait disabled:text-muted-foreground"
+              disabled={fetchingNextPage || fetching}
+              on:click={() => fetchNext(true)}
+            >
+              {fetchingNextPage ? 'Loading more...' : 'Load more'}
+            </button>
           </div>
         {/if}
       </div>
@@ -591,22 +734,20 @@
 </div>
 
 {#snippet RawHeader()}
-  <div
-    class="raw-grid raw-head sticky top-0 z-10 grid border-b border-hairline bg-secondary"
-    role="row"
-    data-testid="raw-header"
-  >
-    <div role="columnheader" class="raw-sticky-city-head">City</div>
-    <div role="columnheader" class="raw-sticky-temp-head text-right tabular-nums">Temp</div>
-    <div role="columnheader" class="raw-sticky-date-head text-right tabular-nums">Date</div>
-    <div role="columnheader">Side</div>
-    <div role="columnheader">Type</div>
-    <div role="columnheader">Outcome</div>
-    <div role="columnheader" class="text-right tabular-nums">Price</div>
-    <div role="columnheader" class="text-right tabular-nums">Amount pUSD</div>
-    <div role="columnheader" class="text-right tabular-nums">Time</div>
-    <div role="columnheader" class="text-right tabular-nums">Tx</div>
-  </div>
+  <thead class="raw-head" data-testid="raw-header">
+    <tr>
+      <th role="columnheader" class="raw-sticky-city">City</th>
+      <th role="columnheader" class="text-right tabular-nums">Temp</th>
+      <th role="columnheader" class="text-right tabular-nums">Date</th>
+      <th role="columnheader">Side</th>
+      <th role="columnheader">Type</th>
+      <th role="columnheader">Outcome</th>
+      <th role="columnheader" class="text-right tabular-nums">Price</th>
+      <th role="columnheader" class="text-right tabular-nums">Amount pUSD</th>
+      <th role="columnheader" class="text-right tabular-nums">Time</th>
+      <th role="columnheader" class="text-right tabular-nums">Tx</th>
+    </tr>
+  </thead>
 {/snippet}
 
 {#snippet DecimalNumber(value: number, decimals: number)}
@@ -619,14 +760,11 @@
 {/snippet}
 
 {#snippet RawSkeleton()}
-  <div class="raw-grid grid items-center px-5 py-1" style:height="var(--h-row)">
-    <div class="h-3 w-10 animate-pulse rounded-md bg-muted"></div>
-    <div class="h-3 w-8 animate-pulse rounded-md bg-muted"></div>
-    <div class="h-3 w-[82%] animate-pulse rounded-md bg-muted"></div>
-    <div class="h-3 w-12 animate-pulse rounded-md bg-muted"></div>
-    <div class="ml-auto h-3 w-12 animate-pulse rounded-md bg-muted"></div>
-    <div class="ml-auto h-3 w-16 animate-pulse rounded-md bg-muted"></div>
-    <div class="h-3 w-24 animate-pulse rounded-md bg-muted"></div>
-    <div class="ml-auto size-5 animate-pulse rounded-full bg-muted"></div>
-  </div>
+  <tr class="raw-row">
+    {#each Array(10) as _, i}
+      <td class="raw-cell {i === 0 ? 'raw-sticky-city' : ''}">
+        <span class="h-3 w-14 animate-pulse rounded-md bg-muted"></span>
+      </td>
+    {/each}
+  </tr>
 {/snippet}

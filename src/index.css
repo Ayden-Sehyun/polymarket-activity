@@ -1,7 +1,5 @@
 @import 'tailwindcss';
 
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'SFMono-Regular', 'Cascadia Code', 'Liberation Mono', Menlo, Consolas, monospace;
@@ -71,68 +69,6 @@
 }
 
 :root {
-  /* shadcn schema, populated with Polymarket's measured values */
-  --background: #f7f7f7;
-  --foreground: #111111;
-  --card: #fbfbfb;
-  --card-foreground: #111111;
-  --popover: #fbfbfb;
-  --popover-foreground: #111111;
-  --primary: #111111;
-  --primary-foreground: #f7f7f7;
-  --secondary: #eeeeee;
-  --secondary-foreground: #111111;
-  --muted: #eeeeee;
-  --muted-foreground: #666666;
-  --accent: #e5e5e5;
-  --accent-foreground: #111111;
-  --destructive: #ef4444;
-  --border: #e5e7eb;
-  --input: #e5e7eb;
-  --ring: #030712;
-  --radius: 0;
-
-  /* Polymarket extras */
-  --page: #eeeeee;
-  --brand: #111111;
-  --brand-hover: #333333;
-  --faint: #8a8a8a;
-  --secondary-text: #5f5f5f;
-  --hairline: #d0d0d0;
-
-  --chart-1: #30a159;
-  --chart-2: #1652f0;
-  --chart-3: #c61d1d;
-  --chart-4: #f8d743;
-  --chart-5: #6b7280;
-
-  --sidebar: #ffffff;
-  --sidebar-foreground: #18181b;
-  --sidebar-primary: #111827;
-  --sidebar-primary-foreground: #f9fafb;
-  --sidebar-accent: #f3f4f6;
-  --sidebar-accent-foreground: #111827;
-  --sidebar-border: #e5e7eb;
-  --sidebar-ring: #030712;
-
-  --text-ui-label: 10px;
-  --text-ui-value: 11px;
-  --text-table-head: 10px;
-  --text-table-body: 11px;
-  --line-ui: 16px;
-  --line-row: 20px;
-  --h-top-mobile: 40px;
-  --h-top: 32px;
-  --h-strip: 24px;
-  --h-filter: 32px;
-  --h-table-head: 24px;
-  --h-row: 33px;
-  --px-chrome: 8px;
-  --px-cell: 12px;
-  --gap-cell: 8px;
-}
-
-.dark {
   --background: #050505;
   --foreground: #e7e7e7;
   --card: #080808;
@@ -158,6 +94,39 @@
   --faint: #5f5f5f;
   --secondary-text: #a0a0a0;
   --hairline: #262626;
+
+  --chart-1: #30a159;
+  --chart-2: #1652f0;
+  --chart-3: #c61d1d;
+  --chart-4: #f8d743;
+  --chart-5: #6b7280;
+
+  --sidebar: #080808;
+  --sidebar-foreground: #e7e7e7;
+  --sidebar-primary: #e7e7e7;
+  --sidebar-primary-foreground: #050505;
+  --sidebar-accent: #141414;
+  --sidebar-accent-foreground: #e7e7e7;
+  --sidebar-border: #262626;
+  --sidebar-ring: #939aa5;
+
+  --text-ui-label: 10px;
+  --text-ui-value: 11px;
+  --text-table-head: 10px;
+  --text-table-body: 11px;
+  --line-ui: 16px;
+  --line-row: 20px;
+  --h-top-mobile: 40px;
+  --h-top: 32px;
+  --h-strip: 24px;
+  --h-filter: 32px;
+  --h-table-head: 24px;
+  --h-row: 33px;
+  --px-chrome: 8px;
+  --px-cell: 12px;
+  --gap-cell: 8px;
+
+  color-scheme: dark;
 }
 
 @layer base {
@@ -260,161 +229,66 @@
     line-height: var(--line-ui);
   }
 
-  .raw-grid {
-    grid-template-columns: 144px 92px 56px 56px 72px 92px 74px 96px 72px 32px;
-    column-gap: var(--gap-cell);
+  .raw-table {
+    width: max-content;
+    min-width: max-content;
+    border-collapse: separate;
+    border-spacing: 0;
+    table-layout: auto;
   }
 
-  .raw-head {
-    min-height: var(--h-table-head);
-    padding-inline: calc(var(--px-cell) + 4px) var(--px-cell);
-    padding-block: 2px;
-    font-size: var(--text-table-head);
-    line-height: var(--line-row);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.025em;
-    color: var(--secondary-text);
-  }
-
-  .raw-head > [role='columnheader'] {
+  .raw-head th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    height: var(--h-table-head);
+    padding: 2px var(--px-cell);
+    border-bottom: 1px solid var(--hairline);
     background-color: var(--secondary);
+    color: var(--secondary-text);
+    font-size: var(--text-table-head);
+    font-weight: 600;
+    letter-spacing: 0.025em;
+    line-height: var(--line-row);
+    text-align: left;
+    text-transform: uppercase;
+    vertical-align: middle;
+    white-space: nowrap;
   }
 
   .raw-row {
     height: var(--h-row);
-    padding-inline: calc(var(--px-cell) + 4px) var(--px-cell);
-    padding-block: 4px;
-    font-size: var(--text-table-body);
-    line-height: var(--line-row);
-    background-image: linear-gradient(to right, var(--row-accent, transparent) 0 4px, transparent 4px);
   }
 
   .raw-cell {
-    display: flex;
-    align-items: center;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    height: var(--h-row);
+    padding: 4px var(--px-cell);
+    border-bottom: 1px solid var(--hairline);
+    background-color: var(--card);
     font-size: var(--text-table-body);
     line-height: var(--line-row);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+    white-space: nowrap;
   }
 
   .raw-sticky-city {
     position: sticky;
     left: 0;
-    z-index: 1;
-    height: var(--h-row);
-    margin-left: -16px;
-    margin-block: -4px -5px;
-    padding-left: 16px;
-    background-color: var(--card);
-    box-shadow: inset 0 -1px 0 var(--hairline);
-  }
-
-  .raw-sticky-city::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    left: 0;
-    width: 4px;
-    background: var(--row-accent, transparent);
-  }
-
-  .raw-sticky-temp {
-    position: sticky;
-    left: 168px;
-    z-index: 1;
-    height: var(--h-row);
-    margin-block: -4px -5px;
-    overflow: visible;
-    background-color: var(--card);
-    box-shadow: inset 0 -1px 0 var(--hairline);
-  }
-
-  .raw-sticky-temp::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    left: calc(-1 * var(--gap-cell));
-    width: var(--gap-cell);
-    background-color: inherit;
-    box-shadow: inset 0 -1px 0 var(--hairline);
-    pointer-events: none;
-  }
-
-  .raw-sticky-date {
-    position: sticky;
-    left: 268px;
-    z-index: 1;
-    height: var(--h-row);
-    margin-block: -4px -5px;
-    overflow: visible;
-    background-color: var(--card);
-    box-shadow: inset 0 -1px 0 var(--hairline);
-  }
-
-  .raw-sticky-date::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    left: calc(-1 * var(--gap-cell));
-    width: var(--gap-cell);
-    background-color: inherit;
-    box-shadow: inset 0 -1px 0 var(--hairline);
-    pointer-events: none;
-  }
-
-  .raw-sticky-city-head {
-    position: sticky;
-    left: 0;
     z-index: 2;
-    margin-left: -16px;
-    border-left: 4px solid transparent;
-    padding-left: 12px;
+    padding-left: calc(var(--px-cell) + 4px);
+    background-color: var(--card);
+    background-image: linear-gradient(to right, var(--row-accent, transparent) 0 4px, transparent 4px);
+    background-repeat: no-repeat;
+  }
+
+  .raw-head .raw-sticky-city {
+    z-index: 4;
     background-color: var(--secondary);
   }
 
-  .raw-sticky-temp-head {
-    position: sticky;
-    left: 168px;
-    z-index: 2;
-    overflow: visible;
-    background-color: var(--secondary);
-  }
-
-  .raw-sticky-temp-head::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    left: calc(-1 * var(--gap-cell));
-    width: var(--gap-cell);
-    background-color: inherit;
-    pointer-events: none;
-  }
-
-  .raw-sticky-date-head {
-    position: sticky;
-    left: 268px;
-    z-index: 2;
-    overflow: visible;
-    background-color: var(--secondary);
-  }
-
-  .raw-sticky-date-head::before {
-    content: '';
-    position: absolute;
-    inset-block: 0;
-    left: calc(-1 * var(--gap-cell));
-    width: var(--gap-cell);
-    background-color: inherit;
-    pointer-events: none;
-  }
-
-  .group:hover .raw-sticky-city,
-  .group:hover .raw-sticky-temp,
-  .group:hover .raw-sticky-date {
+  .raw-row:hover .raw-cell {
     background-color: var(--secondary);
   }
 

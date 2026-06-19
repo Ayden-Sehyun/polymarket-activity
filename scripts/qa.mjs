@@ -184,25 +184,60 @@ async function runSweep(mode) {
     badNumbers[0] || `checked ${rows0.length} visible rows`,
   )
 
-  // ---- 4. deep infinite scroll past the 3000-offset cap
+  // ---- category filter, inferred from slug immediately and Gamma-backed for unknowns
+  const categorySelect = page.locator('[data-testid="filter-category"]')
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('[data-testid="filter-category"] option')].some((o) => o.value === 'weather'),
+    { timeout: 10000 },
+  ).catch(() => {})
+  const categoryValues = await categorySelect.locator('option').evaluateAll((options) =>
+    options.map((option) => ({ value: option.value, label: option.textContent?.trim() ?? '' })),
+  )
+  await categorySelect.selectOption('weather').catch(() => {})
+  await sleep(400)
+  const categoryRows = await visibleRows()
+  const visibleCategories = await page.$$eval(RAW_ROW, (els) => [
+    ...new Set(els.map((el) => el.getAttribute('data-category') || '')),
+  ])
+  ok(
+    'category filter = Weather (slug-derived)',
+    categoryRows.length > 0 && visibleCategories.length === 1 && visibleCategories[0] === 'weather',
+    `options: ${categoryValues.map((option) => option.label).join(', ')}; visible: ${visibleCategories.join(',')}`,
+  )
+  await categorySelect.selectOption('')
+  await sleep(300)
+
+  // ---- 4. explicit pagination past the 3000-offset cap
   let lastTotal = rc.total
   let stall = 0
-  for (let i = 0; i < 90; i++) {
+  const loadMore = page.locator('[data-testid="load-more"]')
+  for (let i = 0; i < 12; i++) {
     rc = await rowCounts()
     if (rc.total >= 3600 || /end of history|cursor=end| END/.test(rc.text)) break
-    await scrollContainer('bottom')
-    await sleep(400)
+    if ((await loadMore.count()) === 0) break
+    await loadMore.click()
+    await page.waitForFunction(
+      (previousTotal) => {
+        const status = document.querySelector('[data-testid="status"]')
+        const total = Number(status?.getAttribute('data-total') || 0)
+        const button = document.querySelector('[data-testid="load-more"]')
+        return total > previousTotal || !button || !button.hasAttribute('disabled')
+      },
+      lastTotal,
+      { timeout: 20000 },
+    ).catch(() => {})
+    await sleep(300)
     rc = await rowCounts()
     if (rc.total === lastTotal) stall++
     else (stall = 0), (lastTotal = rc.total)
-    if (stall > 25) break
+    if (stall > 2) break
   }
   rc = await rowCounts()
   const fetchedSoFar = fetchedItems
   const hitCap = apiCalls.some((c) => c.offset === '3000' && !c.type && !c.side)
   const windowJump = apiCalls.some((c) => c.offset === '0' && c.end && !c.type && !c.side)
   ok(
-    'infinite scroll continues past offset 3000 (time-window jump)',
+    'load more continues past offset 3000 (time-window jump)',
     rc.total > 3500 && hitCap && windowJump,
     `${rc.total} rows loaded; offset=3000 requested: ${hitCap}; offset=0&end=… requested: ${windowJump}`,
   )
