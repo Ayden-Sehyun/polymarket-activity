@@ -142,8 +142,16 @@
     padding-top: calc(env(safe-area-inset-top) + var(--safe-top-buffer));
   }
 
-  .app-shell {
-    border-top: 1px solid var(--hairline);
+  .app-shell::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    right: 0;
+    left: 0;
+    z-index: 1;
+    height: 1px;
+    background: var(--hairline);
+    pointer-events: none;
   }
 
   .top-status-row {

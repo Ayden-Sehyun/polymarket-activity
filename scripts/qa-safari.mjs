@@ -122,17 +122,32 @@ try {
       document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute('content') ?? '',
     htmlBackground: getComputedStyle(document.documentElement).backgroundColor,
     rootPaddingTop: getComputedStyle(document.querySelector('.app-root')).paddingTop,
+    shellPosition: getComputedStyle(document.querySelector('.app-shell')).position,
+    shellTop: getComputedStyle(document.querySelector('.app-shell')).top,
+    shellTopY: document.querySelector('.app-shell')?.getBoundingClientRect().y ?? -1,
     shellBorderTopWidth: getComputedStyle(document.querySelector('.app-shell')).borderTopWidth,
+    shellHairlineContent: getComputedStyle(document.querySelector('.app-shell'), '::before').content,
+    shellHairlineTop: getComputedStyle(document.querySelector('.app-shell'), '::before').top,
+    shellHairlineHeight: getComputedStyle(document.querySelector('.app-shell'), '::before').height,
+    shellHairlineBackground: getComputedStyle(document.querySelector('.app-shell'), '::before').backgroundColor,
     topRowBorderTopWidth: getComputedStyle(document.querySelector('.top-status-row')).borderTopWidth,
   }))
   ok(
-    'mobile Safari safe area metadata asks for black browser chrome',
+    'mobile Safari top border is an internal sticky-shell hairline',
     safeAreaMetadata.viewport.includes('viewport-fit=cover') &&
       safeAreaMetadata.themeColor === '#000000' &&
       safeAreaMetadata.statusBarStyle === 'black-translucent' &&
       safeAreaMetadata.htmlBackground === 'rgb(0, 0, 0)' &&
-      Number.parseFloat(safeAreaMetadata.rootPaddingTop) >= 2 &&
-      safeAreaMetadata.shellBorderTopWidth === '1px' &&
+      Number.parseFloat(safeAreaMetadata.rootPaddingTop) >= 0 &&
+      safeAreaMetadata.shellPosition === 'sticky' &&
+      safeAreaMetadata.shellTop === '0px' &&
+      safeAreaMetadata.shellTopY >= 0 &&
+      safeAreaMetadata.shellTopY < 1 &&
+      safeAreaMetadata.shellBorderTopWidth === '0px' &&
+      safeAreaMetadata.shellHairlineContent !== 'none' &&
+      safeAreaMetadata.shellHairlineTop === '1px' &&
+      safeAreaMetadata.shellHairlineHeight === '1px' &&
+      safeAreaMetadata.shellHairlineBackground === 'rgb(38, 38, 38)' &&
       safeAreaMetadata.topRowBorderTopWidth === '0px',
     JSON.stringify(safeAreaMetadata),
   )

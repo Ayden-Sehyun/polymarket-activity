@@ -106,6 +106,36 @@ try {
   await page.locator('[data-testid="filter-category"]').selectOption('')
   await page.waitForSelector(ROW, { timeout: 12000 })
 
+  const topHairline = await page.evaluate(() => {
+    const shell = document.querySelector('.app-shell')
+    const shellStyle = shell ? getComputedStyle(shell) : null
+    const before = shell ? getComputedStyle(shell, '::before') : null
+    const rect = shell?.getBoundingClientRect()
+    return {
+      shellPosition: shellStyle?.position ?? '',
+      shellTop: shellStyle?.top ?? '',
+      shellBorderTopWidth: shellStyle?.borderTopWidth ?? '',
+      shellY: rect?.y ?? -1,
+      beforeContent: before?.content ?? '',
+      beforeTop: before?.top ?? '',
+      beforeHeight: before?.height ?? '',
+      beforeBackground: before?.backgroundColor ?? '',
+    }
+  })
+  ok(
+    'top status border is painted as an internal hairline',
+    topHairline.shellPosition === 'sticky' &&
+      topHairline.shellTop === '0px' &&
+      topHairline.shellBorderTopWidth === '0px' &&
+      topHairline.shellY >= 0 &&
+      topHairline.shellY < 1 &&
+      topHairline.beforeContent !== 'none' &&
+      topHairline.beforeTop === '1px' &&
+      topHairline.beforeHeight === '1px' &&
+      topHairline.beforeBackground === 'rgb(38, 38, 38)',
+    JSON.stringify(topHairline),
+  )
+
   await page.locator('[data-testid="sticky-summary"]').click()
   await page.locator('[data-testid="sticky-temp"]').check()
   await sleep(150)
