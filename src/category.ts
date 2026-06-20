@@ -1,6 +1,7 @@
 import type { Activity, EventMetadata } from './api'
 
 export type CategoryOption = { value: string; label: string }
+export type CategoryMap = Record<string, CategoryOption | null>
 
 export const DEFAULT_CATEGORY = 'weather'
 

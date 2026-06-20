@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import {
-    activityKey,
     fetchActivityPage,
     fetchEventMetadata,
     fetchPusdBalance,
@@ -21,7 +20,6 @@
   } from './pusdBalanceSession'
   import {
     areCategoriesSettled,
-    categoryForRow,
     DEFAULT_CATEGORY,
     filterRows,
     getCategoryOptions,
@@ -34,27 +32,18 @@
   import {
     defaultColumnState,
     getColumnLayout,
-    measureStickyOffsets as measureColumnStickyOffsets,
     persistColumnState,
     readColumnState,
     toggleStickyColumn as toggleColumnSticky,
     toggleVisibleColumn as toggleColumnVisible,
-    type ColumnMenuItem,
     type ColumnId,
     type ColumnState,
   } from './columnState'
+  import ActivityTable from './ActivityTable.svelte'
+  import ColumnConfig from './ColumnConfig.svelte'
   import {
-    cityLabel,
-    compactWeatherTitle,
-    displayType,
-    formatDecimal,
     formatPusdBalance,
-    formatTimeShort,
-    outcomeClass,
-    rawEventAccent,
     shortHash,
-    sideClass,
-    txHref,
   } from './format'
 
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
@@ -68,9 +57,6 @@
     { value: 'MERGE', label: 'Merge' },
     { value: 'REWARD', label: 'Reward' },
   ]
-  const COLUMN_MENU_ITEM_CLASS =
-    'flex cursor-pointer items-center gap-2 border-b border-hairline px-3 py-2 font-mono text-[11px] uppercase leading-4 last:border-b-0 hover:bg-secondary'
-  type ColumnMenuKind = 'sticky' | 'visible'
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
 
   let address = addressFromUrl()
@@ -91,7 +77,7 @@
   let now = Date.now()
   let clockTimer: number | undefined
   let parentRef: HTMLDivElement
-  let tableRef: HTMLTableElement
+  let activityTableRef: ActivityTable
   let measureRaf: number | undefined
   let autoFillKey = ''
   let shellWidth = '100%'
@@ -106,12 +92,6 @@
   $: categoriesSettled = areCategoriesSettled(allRows, eventCategories)
   $: autoFillKey = `${address.toLowerCase()}|${type}|${side}|${outcome}|${category}`
   $: columnLayout = getColumnLayout(columnState, stickyOffsets)
-  $: visibleByColumn = columnLayout.visibleByColumn
-  $: visibleColumnDefs = columnLayout.visibleColumnDefs
-  $: firstVisibleColumn = columnLayout.firstVisibleColumn
-  $: stickyClassByColumn = columnLayout.stickyClassByColumn
-  $: stickyStyleByColumn = columnLayout.stickyStyleByColumn
-  $: headerClassByColumn = columnLayout.headerClassByColumn
   $: visibleKey = columnState.visibleColumns.join('|')
   $: stickyKey = columnLayout.activeStickyColumns.join('|')
   $: {
@@ -201,11 +181,6 @@
     void scheduleStickyMeasure()
   }
 
-  function toggleColumnMenuItem(kind: ColumnMenuKind, column: ColumnMenuItem) {
-    if (kind === 'sticky') toggleStickyColumn(column.id)
-    else toggleVisibleColumn(column.id)
-  }
-
   async function scheduleStickyMeasure() {
     if (activityState.loading || typeof window === 'undefined') return
     if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
@@ -217,30 +192,12 @@
   }
 
   function measureStickyOffsets() {
-    measureShellWidth()
-    stickyOffsets = measureColumnStickyOffsets(tableRef, columnLayout.stickyByColumn)
+    activityTableRef?.measure()
   }
 
-  function measureShellWidth() {
-    if (!tableRef || typeof window === 'undefined') {
-      shellWidth = '100%'
-      return
-    }
-    const tableWidth = Math.ceil(tableRef.scrollWidth)
-    shellWidth = `${Math.min(tableWidth, window.innerWidth)}px`
-  }
-
-  function handleColumnMenuToggle(event: Event) {
-    const details = event.currentTarget as HTMLDetailsElement
-    const panel = details.querySelector<HTMLElement>('.column-menu-panel')
-    if (!panel || typeof window === 'undefined') return
-    window.requestAnimationFrame(() => {
-      const detailsRect = details.getBoundingClientRect()
-      const panelRect = panel.getBoundingClientRect()
-      const left = Math.max(4, Math.min(detailsRect.left, window.innerWidth - panelRect.width - 4))
-      panel.style.setProperty('--column-menu-left', `${left}px`)
-      panel.style.setProperty('--column-menu-top', `${detailsRect.bottom}px`)
-    })
+  function handleTableMeasured(event: CustomEvent<{ stickyOffsets: Partial<Record<ColumnId, number>>; shellWidth: string }>) {
+    stickyOffsets = event.detail.stickyOffsets
+    shellWidth = event.detail.shellWidth
   }
 
   function handleScroll() {
@@ -324,10 +281,11 @@
           </label>
         </div>
 
-        <div data-testid="config-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {@render ColumnMenu('sticky')}
-          {@render ColumnMenu('visible')}
-        </div>
+        <ColumnConfig
+          {columnLayout}
+          on:toggleSticky={(event) => toggleStickyColumn(event.detail)}
+          on:toggleVisible={(event) => toggleVisibleColumn(event.detail)}
+        />
       {/if}
 
       {#if address !== '' && !validAddress}
@@ -354,133 +312,22 @@
         on:scroll={handleScroll}
         class="table-container h-full min-h-0 overflow-y-auto overflow-x-auto overscroll-contain"
       >
-        {#if activityState.loading || filteredRowsPending}
-          <table bind:this={tableRef} class="raw-table" data-testid="raw-loading">
-            {@render RawHeader()}
-            <tbody>
-              {#each Array(18) as _}
-                {@render RawSkeleton()}
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-
-        {#if empty && validAddress}
-          <div class="ui-empty grid place-items-center text-muted-foreground" data-testid="empty">
-            No rows.
-          </div>
-        {/if}
-        {#if empty && !validAddress}
-          <div class="ui-empty grid place-items-center text-center text-muted-foreground" data-testid="prompt">
-            Add ?address=0x… to the URL to view activity.
-          </div>
-        {/if}
-
-        {#if !activityState.loading && rows.length > 0}
-          <table bind:this={tableRef} class="raw-table" data-testid="raw-table">
-            {@render RawHeader()}
-            <tbody>
-              {#each rows as row, index (activityKey(row))}
-                {@const titleParts = compactWeatherTitle(row.title)}
-                <tr
-                  data-testid="raw-row"
-                  data-category={categoryForRow(row, eventCategories)?.value ?? ''}
-                  data-index={index}
-                  class="raw-row group"
-                  style={`--row-accent: ${rawEventAccent(row.eventSlug)}`}
-                >
-                  {#if visibleByColumn.city}
-                    <td
-                      role="cell"
-                      data-col="city"
-                      class={`raw-cell font-mono text-foreground ${firstVisibleColumn === 'city' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.city}`}
-                      style={stickyStyleByColumn.city}
-                      title={row.title}
-                    >
-                      {cityLabel(row)}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.temp}
-                    <td role="cell" data-col="temp" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'temp' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.temp}`} style={stickyStyleByColumn.temp} title={row.title}>
-                      {titleParts ? `${titleParts.temp}${titleParts.low ? ' low' : ''}` : '--'}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.date}
-                    <td role="cell" data-col="date" class={`raw-cell justify-end font-mono text-right tabular-nums text-[var(--secondary-text)] ${firstVisibleColumn === 'date' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.date}`} style={stickyStyleByColumn.date} title={row.title}>
-                      {titleParts?.date ?? '--'}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.side}
-                    <td role="cell" data-col="side" class={`raw-cell font-mono font-semibold ${sideClass(row.side)} ${firstVisibleColumn === 'side' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.side}`} style={stickyStyleByColumn.side} title={row.side}>
-                      {row.side === 'BUY' ? 'Buy' : row.side === 'SELL' ? 'Sell' : ''}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.type}
-                    <td role="cell" data-col="type" data-testid="cell-type" class={`raw-cell font-mono text-foreground ${firstVisibleColumn === 'type' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.type}`} style={stickyStyleByColumn.type} title={displayType(row.type)}>
-                      {displayType(row.type)}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.outcome}
-                    <td role="cell" data-col="outcome" class={`raw-cell font-mono font-semibold ${outcomeClass(row.outcome)} ${firstVisibleColumn === 'outcome' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.outcome}`} style={stickyStyleByColumn.outcome} title={row.outcome}>
-                      {row.outcome}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.price}
-                    <td role="cell" data-col="price" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'price' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.price}`} style={stickyStyleByColumn.price} title={String(row.price)}>
-                      {#if row.type === 'TRADE' && row.price > 0}
-                        {@render DecimalNumber(row.price, 3)}
-                      {:else}
-                        <span class="text-[var(--faint)]">--</span>
-                      {/if}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.shares}
-                    <td role="cell" data-col="shares" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'shares' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.shares}`} style={stickyStyleByColumn.shares} title={String(row.size)}>
-                      {@render DecimalNumber(row.size, 5)}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.amount}
-                    <td role="cell" data-col="amount" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'amount' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.amount}`} style={stickyStyleByColumn.amount} title={String(row.usdcSize)}>
-                      {@render DecimalNumber(row.usdcSize, 5)}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.time}
-                    <td role="cell" data-col="time" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'time' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.time}`} style={stickyStyleByColumn.time} title={String(row.timestamp)}>
-                      {formatTimeShort(row.timestamp)}
-                    </td>
-                  {/if}
-                  {#if visibleByColumn.tx}
-                    <td role="cell" data-col="tx" class={`raw-cell justify-end font-mono text-right text-foreground ${firstVisibleColumn === 'tx' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.tx}`} style={stickyStyleByColumn.tx} title={row.transactionHash}>
-                      <a
-                        href={txHref(row.transactionHash)}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={row.transactionHash}
-                        class="raw-link-anchor text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
-                      >
-                        LINK
-                      </a>
-                    </td>
-                  {/if}
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
-
-        {#if !activityState.loading && !filteredRowsPending && validAddress && activityState.nextCursor}
-          <div class="ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground">
-            <button
-              type="button"
-              data-testid="load-more"
-              class="ui-action border border-hairline bg-card text-foreground hover:bg-secondary disabled:cursor-wait disabled:text-muted-foreground"
-              disabled={activityState.fetchingNextPage || activityState.fetching}
-              on:click={() => activitySession?.loadNext(true)}
-            >
-              {activityState.fetchingNextPage ? 'Loading more...' : 'Load more'}
-            </button>
-          </div>
-        {/if}
+        <ActivityTable
+          bind:this={activityTableRef}
+          {rows}
+          {eventCategories}
+          {columnState}
+          {stickyOffsets}
+          loading={activityState.loading}
+          {filteredRowsPending}
+          {empty}
+          {validAddress}
+          nextCursor={Boolean(activityState.nextCursor)}
+          fetchingNextPage={activityState.fetchingNextPage}
+          fetching={activityState.fetching}
+          on:measured={handleTableMeasured}
+          on:loadMore={() => activitySession?.loadNext(true)}
+        />
       </div>
     </div>
   </main>
@@ -496,61 +343,3 @@
     </button>
   {/if}
 </div>
-
-{#snippet RawHeader()}
-  <thead class="raw-head" data-testid="raw-header">
-    <tr>
-      {#each visibleColumnDefs as column}
-        <th role="columnheader" data-col={column.id} class={headerClassByColumn[column.id]} style={stickyStyleByColumn[column.id]}>{column.label}</th>
-      {/each}
-    </tr>
-  </thead>
-{/snippet}
-
-{#snippet ColumnMenu(kind: ColumnMenuKind)}
-  <details class="column-menu relative flex shrink-0 border-r border-hairline" on:toggle={handleColumnMenuToggle}>
-    <summary
-      data-testid={kind === 'sticky' ? 'sticky-summary' : 'columns-summary'}
-      class={`ui-control flex ${kind === 'sticky' ? 'min-w-36' : 'min-w-28'} cursor-pointer list-none items-center bg-card pr-3 text-foreground hover:bg-secondary [&::-webkit-details-marker]:hidden`}
-    >
-      {kind === 'sticky' ? columnLayout.stickySummary : columnLayout.visibleSummary}
-    </summary>
-    <div
-      class="column-menu-panel z-50 grid min-w-48 border border-hairline bg-card shadow-lg"
-      data-testid={kind === 'sticky' ? 'sticky-menu' : 'columns-menu'}
-    >
-      {#each columnLayout.menuItems as column}
-        <label class={`${COLUMN_MENU_ITEM_CLASS} ${kind === 'sticky' ? (column.visibleChecked ? 'text-foreground' : 'text-[var(--faint)]') : `text-foreground ${column.visibleDisabled ? 'opacity-50' : ''}`}`}>
-          <input
-            type="checkbox"
-            class="accent-primary"
-            checked={kind === 'sticky' ? column.stickyChecked : column.visibleChecked}
-            disabled={kind === 'sticky' ? column.stickyDisabled : column.visibleDisabled}
-            data-testid={`${kind === 'sticky' ? 'sticky' : 'column'}-${column.id}`}
-            on:change={() => toggleColumnMenuItem(kind, column)}
-          />
-          <span>{column.label}</span>
-        </label>
-      {/each}
-    </div>
-  </details>
-{/snippet}
-
-{#snippet DecimalNumber(value: number, decimals: number)}
-  {@const parts = formatDecimal(value, decimals)}
-  {#if parts}
-    <span class="tabular-nums"><span>{parts.whole}</span><span>.</span><span>{parts.meaningful}</span><span class="text-[var(--faint)]">{parts.padding}</span></span>
-  {:else}
-    —
-  {/if}
-{/snippet}
-
-{#snippet RawSkeleton()}
-  <tr class="raw-row">
-    {#each visibleColumnDefs as column}
-      <td data-col={column.id} class={`raw-cell ${column.id === firstVisibleColumn ? 'raw-accent-cell' : ''} ${stickyClassByColumn[column.id]}`} style={stickyStyleByColumn[column.id]}>
-        <span class="h-3 w-14 animate-pulse rounded-md bg-muted"></span>
-      </td>
-    {/each}
-  </tr>
-{/snippet}

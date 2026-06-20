@@ -55,8 +55,7 @@ pages, cursor/dedupe behavior, polling, loading/error flags, retry, and
 client-filter auto-fill.
 
 `src/columnState.ts` owns visible/sticky column state: storage, invariants,
-summaries, menu item state, and sticky offset derivation. `src/App.svelte`
-measures the actual table DOM and passes those measurements into this module.
+summaries, menu item state, and sticky offset derivation.
 
 `src/categorySession.ts` owns category metadata hydration: slug/title inference,
 Gamma metadata fetches, pending-slug dedupe, abort/dispose behavior, and the
@@ -64,9 +63,15 @@ event-slug category map. `src/category.ts` stays pure: category inference,
 options, settled checks, and row filtering.
 
 `src/App.svelte` owns page-level UI wiring: address validation, selected filter
-values, pUSD balance display, scroll/back-to-top, and table rendering.
+values, pUSD balance display, scroll/back-to-top, and component composition.
 `src/pusdBalanceSession.ts` owns pUSD balance fetch state: normalized address,
 abort/stale-response handling, and fetching flags.
+
+`src/ActivityTable.svelte` owns native table rendering, sticky/table-width DOM
+measurement, loading/empty/load-more table states, and row cell rendering.
+`src/ColumnConfig.svelte` owns the visible/sticky column menus and menu panel
+positioning. `src/displayRow.ts` maps raw API rows into stable table display
+fields.
 
 `src/category.ts` owns category inference and category filtering helpers. The
 default category is Weather. Gamma metadata is used when slug/title inference is
