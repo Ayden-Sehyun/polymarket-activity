@@ -40,23 +40,23 @@ export function compactWeatherTitle(title: string): { city: string; temp: string
 export const cityLabel = (row: Activity) => compactWeatherTitle(row.title)?.city ?? row.title
 
 const TAILWIND_DISTINCT_ACCENTS = [
-  'oklch(63.7% 0.237 25.331 / 0.9)', // red-500
-  'oklch(71.5% 0.143 215.221 / 0.9)', // cyan-500
-  'oklch(64.5% 0.246 16.439 / 0.9)', // rose-500
-  'oklch(70.4% 0.14 182.503 / 0.9)', // teal-500
-  'oklch(65.6% 0.241 354.308 / 0.9)', // pink-500
-  'oklch(69.6% 0.17 162.48 / 0.9)', // emerald-500
-  'oklch(66.7% 0.295 322.15 / 0.9)', // fuchsia-500
-  'oklch(72.3% 0.219 149.579 / 0.9)', // green-500
-  'oklch(62.7% 0.265 303.9 / 0.9)', // purple-500
-  'oklch(76.8% 0.233 130.85 / 0.9)', // lime-500
-  'oklch(60.6% 0.25 292.717 / 0.9)', // violet-500
-  'oklch(79.5% 0.184 86.047 / 0.9)', // yellow-500
-  'oklch(58.5% 0.233 277.117 / 0.9)', // indigo-500
-  'oklch(76.9% 0.188 70.08 / 0.9)', // amber-500
-  'oklch(62.3% 0.214 259.815 / 0.9)', // blue-500
-  'oklch(70.5% 0.213 47.604 / 0.9)', // orange-500
-  'oklch(68.5% 0.169 237.323 / 0.9)', // sky-500
+  'oklch(63.7% 0.237 25.331 / 0.45)', // red-500
+  'oklch(71.5% 0.143 215.221 / 0.45)', // cyan-500
+  'oklch(64.5% 0.246 16.439 / 0.45)', // rose-500
+  'oklch(70.4% 0.14 182.503 / 0.45)', // teal-500
+  'oklch(65.6% 0.241 354.308 / 0.45)', // pink-500
+  'oklch(69.6% 0.17 162.48 / 0.45)', // emerald-500
+  'oklch(66.7% 0.295 322.15 / 0.45)', // fuchsia-500
+  'oklch(72.3% 0.219 149.579 / 0.45)', // green-500
+  'oklch(62.7% 0.265 303.9 / 0.45)', // purple-500
+  'oklch(76.8% 0.233 130.85 / 0.45)', // lime-500
+  'oklch(60.6% 0.25 292.717 / 0.45)', // violet-500
+  'oklch(79.5% 0.184 86.047 / 0.45)', // yellow-500
+  'oklch(58.5% 0.233 277.117 / 0.45)', // indigo-500
+  'oklch(76.9% 0.188 70.08 / 0.45)', // amber-500
+  'oklch(62.3% 0.214 259.815 / 0.45)', // blue-500
+  'oklch(70.5% 0.213 47.604 / 0.45)', // orange-500
+  'oklch(68.5% 0.169 237.323 / 0.45)', // sky-500
 ] as const
 
 export const eventAccentForIndex = (index: number) => TAILWIND_DISTINCT_ACCENTS[index % TAILWIND_DISTINCT_ACCENTS.length]
