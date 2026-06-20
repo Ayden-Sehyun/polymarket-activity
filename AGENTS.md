@@ -14,20 +14,24 @@ bundle. Production is deployed to Cloudflare Pages at https://onedam.pages.dev.
 ```sh
 npm run dev                    # Vite dev server on http://localhost:5173
 npm run build                  # svelte-check + vite build
+npm run test:unit              # Vitest unit contracts for modules
+npm run qa:contract            # compact mocked-data browser refactor contract
 npm run qa                     # desktop + mobile Playwright feature sweep
 npm run qa:desktop             # desktop sweep only
 npm run qa:mobile              # mobile sweep only
 npm run qa:error               # network-kill/error/retry probe
+npm run refactor:check         # fast refactor loop gate
 npm run smoke -- <url> <wallet> # production smoke probe
 ```
 
-The expected workflow after feature changes is:
+The expected fast workflow while refactoring is:
 
 ```sh
-npm run build
-npm run qa
-npm run qa:error
+npm run refactor:check
 ```
+
+Run the full `npm run qa` desktop + mobile sweep before committing UI, fetching,
+filtering, or sticky-column changes.
 
 Deploy:
 
@@ -46,8 +50,16 @@ preview, then Load More fetches 500-row pages. After offset 3000 it restarts at
 `offset=0&end=<oldest timestamp seen>`. `end` is inclusive, so duplicate
 boundary rows are expected and are deduped with `activityKey`.
 
-`src/App.svelte` owns UI state and orchestration: address validation, server
-filters, loaded pages, polling, sticky/visible columns, loading/error states,
+`src/activitySession.ts` owns activity loading state: server filters, loaded
+pages, cursor/dedupe behavior, polling, loading/error flags, retry, and
+client-filter auto-fill.
+
+`src/columnState.ts` owns visible/sticky column state: storage, invariants,
+summaries, menu item state, and sticky offset derivation. `src/App.svelte`
+measures the actual table DOM and passes those measurements into this module.
+
+`src/App.svelte` owns page-level UI wiring: address validation, selected filter
+values, pUSD balance display, category metadata hydration, scroll/back-to-top,
 and table rendering.
 
 `src/category.ts` owns category inference and category filtering helpers. The

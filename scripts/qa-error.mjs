@@ -2,6 +2,7 @@
 // with a working retry button. Run: node scripts/qa-error.mjs
 import { chromium } from 'playwright'
 
+const APP_URL = process.argv[2] || 'http://localhost:5173'
 const ROW = '[data-testid="raw-row"]'
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1440, height: 950 } })
@@ -15,7 +16,7 @@ const ok = (name, pass, detail = '') => {
 page.on('pageerror', (e) => console.log('pageerror:', e.message))
 
 try {
-  await page.goto('http://localhost:5173/?address=0x774728ed9264a5ca242e8bd7952a869df318fe40')
+  await page.goto(`${APP_URL}/?address=0x774728ed9264a5ca242e8bd7952a869df318fe40`)
   await page.waitForSelector(ROW, { timeout: 20000 })
   await page.locator('[data-testid="filter-category"]').selectOption('')
 

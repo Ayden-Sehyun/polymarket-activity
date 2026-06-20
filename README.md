@@ -26,12 +26,19 @@ npm run dev     # http://localhost:5173
 
 ```sh
 npm run build
+npm run test:unit
+npm run qa:contract
 npm run qa
 npm run qa:desktop
 npm run qa:mobile
 npm run qa:error
+npm run refactor:check
 npm run smoke -- <baseUrl> <wallet>
 ```
+
+`refactor:check` is the fast loop gate: build, unit module contracts, mocked
+browser contract, and network-error recovery. Run full `npm run qa` before
+committing UI/fetching/filter changes.
 
 Deploy:
 

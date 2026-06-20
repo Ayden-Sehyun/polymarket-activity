@@ -6,12 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "test:unit": "vitest run",
     "qa": "node scripts/qa.mjs",
     "qa:desktop": "node scripts/qa.mjs desktop",
     "qa:mobile": "node scripts/qa.mjs mobile",
+    "qa:contract": "node scripts/qa-refactor-contract.mjs",
     "qa:error": "node scripts/qa-error.mjs",
     "smoke": "node scripts/smoke-prod.mjs",
-    "test": "npm run qa && npm run qa:error",
+    "refactor:check": "npm run build && npm run test:unit && node scripts/refactor-check-browser.mjs",
+    "test": "npm run test:unit && npm run qa && npm run qa:error",
     "preview": "vite preview"
   },
   "license": "ISC",
@@ -27,6 +30,7 @@
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",
     "typescript": "^6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
   }
 }
