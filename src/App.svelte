@@ -15,6 +15,11 @@
     type ActivitySessionState,
   } from './activitySession'
   import {
+    createInitialPusdBalanceState,
+    createPusdBalanceSession,
+    type PusdBalanceState,
+  } from './pusdBalanceSession'
+  import {
     areCategoriesSettled,
     categoryForRow,
     categoryFromActivity,
@@ -71,19 +76,16 @@
   let category = DEFAULT_CATEGORY
   let activitySession: ReturnType<typeof createActivitySession> | null = null
   let activityState: ActivitySessionState = createInitialActivitySessionState()
+  let balanceSession: ReturnType<typeof createPusdBalanceSession> | null = null
+  let pusdBalanceState: PusdBalanceState = createInitialPusdBalanceState()
   let columnState: ColumnState = defaultColumnState()
   let stickyOffsets: Partial<Record<ColumnId, number>> = {}
   let eventCategories: Record<string, CategoryOption | null> = {}
-  let pusdBalance: number | null = null
-  let pusdBalanceFetching = false
   let showTop = false
   let uiQueryKey = ''
-  let balanceSeq = 0
   let now = Date.now()
   let clockTimer: number | undefined
-  let balanceController: AbortController | null = null
   let categoryController: AbortController | null = null
-  let balanceAddress = ''
   let parentRef: HTMLDivElement
   let tableRef: HTMLTableElement
   let measureRaf: number | undefined
@@ -128,7 +130,7 @@
       if (parentRef) parentRef.scrollTop = 0
     }
     activitySession.setQuery({ address, type, side, validAddress })
-    syncBalanceAddress(address, validAddress)
+    balanceSession?.setAddress(address, validAddress)
   }
   $: void activitySession?.maybeAutoFillFilteredRows(autoFillKey, clientFilterActive, rows.length)
 
@@ -141,8 +143,14 @@
         if (next.lastRefreshAt !== null) now = next.lastRefreshAt
       },
     })
+    balanceSession = createPusdBalanceSession({
+      fetchBalance: fetchPusdBalance,
+      onChange: (next) => {
+        pusdBalanceState = next
+      },
+    })
     activitySession.setQuery({ address, type, side, validAddress })
-    syncBalanceAddress(address, validAddress)
+    balanceSession.setAddress(address, validAddress)
     clockTimer = window.setInterval(() => {
       now = Date.now()
     }, 1000)
@@ -153,7 +161,7 @@
 
   function cleanupRuntime() {
     activitySession?.dispose()
-    balanceController?.abort()
+    balanceSession?.dispose()
     categoryController?.abort()
     if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
     if (clockTimer !== undefined) window.clearInterval(clockTimer)
@@ -250,37 +258,6 @@
     await Promise.all(Array.from({ length: Math.min(CATEGORY_FETCH_CONCURRENCY, slugs.length) }, worker))
   }
 
-  function syncBalanceAddress(nextAddress: string, isValidAddress: boolean) {
-    if (!isValidAddress) {
-      balanceController?.abort()
-      balanceSeq += 1
-      pusdBalance = null
-      pusdBalanceFetching = false
-      balanceAddress = ''
-      return
-    }
-    const normalizedAddress = nextAddress.toLowerCase()
-    if (balanceAddress === normalizedAddress) return
-    balanceAddress = normalizedAddress
-    pusdBalance = null
-    void fetchBalance(++balanceSeq, normalizedAddress)
-  }
-
-  async function fetchBalance(seq: number, fetchAddress: string) {
-    balanceController?.abort()
-    const controller = new AbortController()
-    balanceController = controller
-    pusdBalanceFetching = true
-    try {
-      const balance = await fetchPusdBalance(fetchAddress, controller.signal)
-      if (seq === balanceSeq && balanceAddress === fetchAddress) pusdBalance = balance
-    } catch {
-      if (seq === balanceSeq && balanceAddress === fetchAddress) pusdBalance = null
-    } finally {
-      if (seq === balanceSeq && balanceAddress === fetchAddress) pusdBalanceFetching = false
-    }
-  }
-
   function handleScroll() {
     showTop = parentRef.scrollTop > 1200
   }
@@ -304,9 +281,9 @@
           <span class="ui-top-cell flex max-w-52 shrink-0 items-center truncate border-r border-hairline font-semibold text-foreground" data-testid="profile-name">{profile.name}</span>
           <span class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono text-muted-foreground">{shortHash(address)}</span>
           <span class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono text-[var(--secondary-text)]" data-testid="pusd-balance">
-            {#if pusdBalance !== null}
-              {formatPusdBalance(pusdBalance)} PUSD
-            {:else if pusdBalanceFetching}
+            {#if pusdBalanceState.balance !== null}
+              {formatPusdBalance(pusdBalanceState.balance)} PUSD
+            {:else if pusdBalanceState.fetching}
               PUSD …
             {:else}
               PUSD --
