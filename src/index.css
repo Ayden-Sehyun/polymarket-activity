@@ -390,6 +390,6 @@
 
 @media (max-width: 767px) {
   :root {
-    --safe-top-buffer: 2px;
+    --safe-top-buffer: 0px;
   }
 }
