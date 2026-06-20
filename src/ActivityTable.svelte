@@ -2,6 +2,7 @@
   import { createEventDispatcher } from 'svelte'
   import { activityKey, type Activity } from './api'
   import type { CategoryMap } from './category'
+  import type { ColorBarMode } from './colorBar'
   import { toActivityDisplayRow, type ActivityDisplayRow } from './displayRow'
   import {
     getColumnLayout,
@@ -9,7 +10,7 @@
     type ColumnId,
     type ColumnState,
   } from './columnState'
-  import { formatDecimal } from './format'
+  import { formatDecimal, sequentialEventGroupAccents } from './format'
 
   export let rows: Activity[] = []
   export let eventCategories: CategoryMap = {}
@@ -21,6 +22,7 @@
   export let nextCursor = false
   export let fetchingNextPage = false
   export let fetching = false
+  export let colorMode: ColorBarMode = 'horizontal'
 
   const dispatch = createEventDispatcher<{
     loadMore: void
@@ -38,6 +40,7 @@
   $: stickyClassByColumn = columnLayout.stickyClassByColumn
   $: stickyStyleByColumn = columnLayout.stickyStyleByColumn
   $: headerClassByColumn = columnLayout.headerClassByColumn
+  $: rowAccents = sequentialEventGroupAccents(rows)
 
   export function measure(viewportWidth = typeof window === 'undefined' ? 0 : window.innerWidth) {
     const nextStickyOffsets = measureColumnStickyOffsets(tableRef, columnLayout.stickyByColumn)
@@ -48,7 +51,7 @@
 </script>
 
 {#if loading}
-  <table bind:this={tableRef} class="raw-table" data-testid="raw-loading">
+  <table bind:this={tableRef} class="raw-table" data-color-mode={colorMode} data-testid="raw-loading">
     {@render RawHeader()}
     <tbody>
       {#each Array(18) as _}
@@ -70,7 +73,7 @@
 {/if}
 
 {#if !loading && rows.length > 0}
-  <table bind:this={tableRef} class="raw-table" data-testid="raw-table">
+  <table bind:this={tableRef} class="raw-table" data-color-mode={colorMode} data-testid="raw-table">
     {@render RawHeader()}
     <tbody>
       {#each rows as row, index (activityKey(row))}
@@ -80,7 +83,7 @@
           data-category={displayRow.categoryValue}
           data-index={index}
           class="raw-row group"
-          style={`--row-accent: ${displayRow.accent}`}
+          style={`--row-accent: ${rowAccents[index] ?? 'transparent'}`}
         >
           {@render RawCells(displayRow)}
         </tr>

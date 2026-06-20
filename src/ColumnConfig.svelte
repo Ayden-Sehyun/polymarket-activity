@@ -1,13 +1,16 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import { createEventDispatcher } from 'svelte'
+  import { COLOR_BAR_OPTIONS, type ColorBarMode } from './colorBar'
   import type { ColumnId, ColumnLayout, ColumnMenuItem } from './columnState'
 
   export let columnLayout: ColumnLayout
+  export let colorMode: ColorBarMode
 
   const dispatch = createEventDispatcher<{
     toggleSticky: ColumnId
     toggleVisible: ColumnId
+    colorMode: ColorBarMode
   }>()
   const COLUMN_MENU_ITEM_CLASS =
     'flex items-center gap-2 border-b border-hairline px-3 py-2 font-mono text-[11px] uppercase leading-4 last:border-b-0 hover:bg-secondary'
@@ -49,6 +52,10 @@
     dispatch(kind === 'sticky' ? 'toggleSticky' : 'toggleVisible', column.id)
   }
 
+  function changeColorMode(event: Event) {
+    dispatch('colorMode', (event.currentTarget as HTMLSelectElement).value as ColorBarMode)
+  }
+
   function closeMenus() {
     configRow?.querySelectorAll<HTMLDetailsElement>('.column-menu[open]').forEach((details) => {
       details.open = false
@@ -59,6 +66,19 @@
 <div bind:this={configRow} data-testid="config-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
   {@render ColumnMenu('sticky')}
   {@render ColumnMenu('visible')}
+  <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
+    <select
+      value={colorMode}
+      data-testid="color-mode"
+      aria-label="Color bar mode"
+      class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary"
+      on:change={changeColorMode}
+    >
+      {#each COLOR_BAR_OPTIONS as option}
+        <option value={option.value}>{option.label}</option>
+      {/each}
+    </select>
+  </label>
 </div>
 
 {#snippet ColumnMenu(kind: ColumnMenuKind)}

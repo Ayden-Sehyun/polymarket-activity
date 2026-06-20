@@ -3,10 +3,12 @@ import {
   cityLabel,
   compactWeatherTitle,
   displayType,
+  eventAccentForIndex,
   formatDecimal,
   formatPusdBalance,
   formatTimeShort,
   outcomeClass,
+  sequentialEventGroupAccents,
   shortHash,
   sideClass,
   txHref,
@@ -65,5 +67,27 @@ describe('format helpers', () => {
 
   it('renders short local time without date text', () => {
     expect(formatTimeShort(1_781_900_000)).toMatch(/^\d{1,2}:\d{2}\s?[AP]M$/i)
+  })
+
+  it('maps contiguous event groups to neighbor-distinct Tailwind default colors', () => {
+    const accents = sequentialEventGroupAccents([
+      activity(1, { eventSlug: 'miami' }),
+      activity(2, { eventSlug: 'miami' }),
+      activity(3, { eventSlug: 'karachi' }),
+      activity(4, { eventSlug: 'miami' }),
+      activity(5, { eventSlug: 'wuhan' }),
+    ])
+
+    expect(accents).toEqual([
+      eventAccentForIndex(0),
+      eventAccentForIndex(0),
+      eventAccentForIndex(1),
+      eventAccentForIndex(2),
+      eventAccentForIndex(3),
+    ])
+    expect(accents[0]).toContain('25.331')
+    expect(accents[2]).toContain('215.221')
+    expect(accents[3]).toContain('16.439')
+    expect(accents[0]).toMatch(/^oklch\(.+ \/ 0\.9\)$/)
   })
 })

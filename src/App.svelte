@@ -24,6 +24,12 @@
     getCategoryOptions,
   } from './category'
   import {
+    DEFAULT_COLOR_BAR_MODE,
+    persistColorBarMode,
+    readColorBarMode,
+    type ColorBarMode,
+  } from './colorBar'
+  import {
     createCategorySession,
     createInitialCategorySessionState,
     type CategorySessionState,
@@ -63,6 +69,7 @@
     { value: '30000', label: 'AUTO 30S' },
     { value: '60000', label: 'AUTO 60S' },
   ]
+  const AMBIENT_REFRESH_DEDUPE_MS = 1_000
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
 
   let address = addressFromUrl()
@@ -87,6 +94,8 @@
   let measureRaf: number | undefined
   let autoRefreshMs = '15000'
   let shellWidth = '100%'
+  let colorMode: ColorBarMode = DEFAULT_COLOR_BAR_MODE
+  let lastAmbientRefreshAt = 0
 
   $: validAddress = ADDRESS_RE.test(address)
   $: allRows = activityState.rows
@@ -109,6 +118,10 @@
   $: statusCursor = activityState.nextCursor ? 'more' : validAddress ? 'end' : ''
   $: empty = !activityState.loading && rows.length === 0
   $: profile = getProfile(allRows)
+  $: titleIdentity = profile.name === 'Anonymous' ? shortHash(address) : profile.name
+  $: if (typeof document !== 'undefined') {
+    document.title = validAddress ? `@${titleIdentity} on Polymarket` : 'Polymarket Activity'
+  }
   $: categorySession?.hydrate(allRows)
   $: activitySession?.setRefreshIntervalMs(Number(autoRefreshMs))
   $: if (activitySession) {
@@ -124,6 +137,7 @@
 
   onMount(() => {
     columnState = readColumnState(window.localStorage)
+    colorMode = readColorBarMode(window.localStorage)
     activitySession = createActivitySession({
       fetchPage: fetchActivityPage,
       onChange: (next) => {
@@ -150,6 +164,9 @@
       now = Date.now()
     }, 1000)
     window.addEventListener('resize', scheduleStickyMeasure)
+    window.addEventListener('focus', refreshFromAmbientTrigger)
+    window.addEventListener('online', refreshFromAmbientTrigger)
+    document.addEventListener('visibilitychange', refreshFromAmbientTrigger)
     return () => {
       cleanupRuntime()
     }
@@ -162,6 +179,9 @@
     if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
     if (clockTimer !== undefined) window.clearInterval(clockTimer)
     window.removeEventListener('resize', scheduleStickyMeasure)
+    window.removeEventListener('focus', refreshFromAmbientTrigger)
+    window.removeEventListener('online', refreshFromAmbientTrigger)
+    document.removeEventListener('visibilitychange', refreshFromAmbientTrigger)
   }
 
   function getProfile(sourceRows: Activity[]) {
@@ -181,6 +201,11 @@
     columnState = toggleColumnVisible(columnState, column)
     persistColumnState(window.localStorage, columnState)
     void scheduleStickyMeasure()
+  }
+
+  function setColorMode(mode: ColorBarMode) {
+    colorMode = mode
+    persistColorBarMode(window.localStorage, mode)
   }
 
   async function scheduleStickyMeasure() {
@@ -215,6 +240,14 @@
     balanceSession?.refresh()
   }
 
+  function refreshFromAmbientTrigger() {
+    if (document.visibilityState === 'hidden') return
+    const nextRefreshAt = Date.now()
+    if (nextRefreshAt - lastAmbientRefreshAt < AMBIENT_REFRESH_DEDUPE_MS) return
+    lastAmbientRefreshAt = nextRefreshAt
+    refreshNow()
+  }
+
   function backToTop() {
     if (parentRef) parentRef.scrollTop = 0
     showTop = false
@@ -223,13 +256,13 @@
 </script>
 
 <div class="grid h-[100dvh] min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] font-mono text-foreground">
-  <header class="sticky top-0 z-30 mx-auto border-x border-t border-hairline bg-card" style={`width: ${shellWidth}`}>
+  <header class="app-shell sticky top-0 z-30 mx-auto border-x border-hairline bg-card" style={`width: ${shellWidth}`}>
     <div class="flex flex-col">
-      <div class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div class="top-status-row flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {#if validAddress}
-          <span class="ui-top-cell flex max-w-52 shrink-0 items-center truncate border-r border-hairline font-semibold text-foreground" data-testid="profile-name">{profile.name}</span>
-          <span class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono text-muted-foreground">{shortHash(address)}</span>
-          <span class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono text-[var(--secondary-text)]" data-testid="pusd-balance">
+          <span class="ui-top-cell flex max-w-52 shrink-0 items-center truncate font-semibold text-foreground" data-testid="profile-name">{profile.name}</span>
+          <span class="ui-top-cell flex shrink-0 items-center font-mono text-muted-foreground">{shortHash(address)}</span>
+          <span class="ui-top-cell flex shrink-0 items-center font-mono text-[var(--secondary-text)]" data-testid="pusd-balance">
             {#if pusdBalanceState.balance !== null}
               {formatPusdBalance(pusdBalanceState.balance)} PUSD
             {:else if pusdBalanceState.fetching}
@@ -238,7 +271,7 @@
               PUSD --
             {/if}
           </span>
-          <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
+          <label class="flex shrink-0 items-center text-[var(--secondary-text)]">
             <select
               bind:value={autoRefreshMs}
               data-testid="auto-refresh"
@@ -252,14 +285,14 @@
           </label>
           <button
             type="button"
-            class="ui-top-cell flex shrink-0 items-center border-r border-hairline bg-card font-mono uppercase text-foreground transition-colors hover:bg-secondary focus-visible:bg-secondary"
+            class="ui-top-cell flex shrink-0 items-center bg-card font-mono uppercase text-foreground transition-colors hover:bg-secondary focus-visible:bg-secondary"
             data-testid="manual-refresh"
             on:click={refreshNow}
           >
             REFRESH
           </button>
           <p
-            class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono uppercase text-[var(--secondary-text)]"
+            class="ui-top-cell flex shrink-0 items-center font-mono uppercase text-[var(--secondary-text)]"
             data-testid="status"
             data-shown={rows.length}
             data-total={allRows.length}
@@ -310,8 +343,10 @@
 
         <ColumnConfig
           {columnLayout}
+          {colorMode}
           on:toggleSticky={(event) => toggleStickyColumn(event.detail)}
           on:toggleVisible={(event) => toggleVisibleColumn(event.detail)}
+          on:colorMode={(event) => setColorMode(event.detail)}
         />
       {/if}
 
@@ -345,6 +380,7 @@
           {eventCategories}
           {columnState}
           {stickyOffsets}
+          {colorMode}
           loading={activityState.loading}
           {empty}
           {validAddress}
