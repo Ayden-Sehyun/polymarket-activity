@@ -6,6 +6,7 @@ export const COLUMN_DEFS = [
   { id: 'type', label: 'Type', align: 'left' },
   { id: 'outcome', label: 'Outcome', align: 'left' },
   { id: 'price', label: 'Price', align: 'right' },
+  { id: 'shares', label: 'Shares', align: 'right' },
   { id: 'amount', label: 'Amount pUSD', align: 'right' },
   { id: 'time', label: 'Time', align: 'right' },
   { id: 'tx', label: 'Tx', align: 'right' },
@@ -40,6 +41,9 @@ export type ColumnMenuItem = {
 
 const STICKY_STORAGE_KEY = 'activity-sticky-columns'
 const VISIBLE_STORAGE_KEY = 'activity-visible-columns'
+const COLUMN_SCHEMA_STORAGE_KEY = 'activity-column-schema-version'
+const CURRENT_COLUMN_SCHEMA_VERSION = '2'
+const SCHEMA_ADDED_DEFAULT_VISIBLE_COLUMNS: ColumnId[] = ['shares']
 const ALL_COLUMN_IDS = COLUMN_DEFS.map((column) => column.id)
 const DEFAULT_STICKY_COLUMNS: ColumnId[] = ['city']
 
@@ -51,7 +55,10 @@ export function defaultColumnState(): ColumnState {
 }
 
 export function readColumnState(storage: Storage): ColumnState {
-  const visibleColumns = readColumnList(storage, VISIBLE_STORAGE_KEY, ALL_COLUMN_IDS, true)
+  const visibleColumns = migrateVisibleColumns(
+    storage,
+    readColumnList(storage, VISIBLE_STORAGE_KEY, ALL_COLUMN_IDS, true),
+  )
   const stickyColumns = readColumnList(storage, STICKY_STORAGE_KEY, DEFAULT_STICKY_COLUMNS).filter((column) =>
     visibleColumns.includes(column),
   )
@@ -61,6 +68,7 @@ export function readColumnState(storage: Storage): ColumnState {
 export function persistColumnState(storage: Storage, state: ColumnState) {
   storage.setItem(VISIBLE_STORAGE_KEY, JSON.stringify(orderColumns(state.visibleColumns)))
   storage.setItem(STICKY_STORAGE_KEY, JSON.stringify(orderColumns(state.stickyColumns)))
+  storage.setItem(COLUMN_SCHEMA_STORAGE_KEY, CURRENT_COLUMN_SCHEMA_VERSION)
 }
 
 export function toggleStickyColumn(state: ColumnState, column: ColumnId): ColumnState {
@@ -167,6 +175,11 @@ function readColumnList(storage: Storage, key: string, fallback: ColumnId[], req
   } catch {
     return [...fallback]
   }
+}
+
+function migrateVisibleColumns(storage: Storage, columns: ColumnId[]) {
+  if (storage.getItem(COLUMN_SCHEMA_STORAGE_KEY) === CURRENT_COLUMN_SCHEMA_VERSION) return columns
+  return orderColumns([...columns, ...SCHEMA_ADDED_DEFAULT_VISIBLE_COLUMNS])
 }
 
 function orderColumns(columns: ColumnId[]) {

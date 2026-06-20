@@ -123,6 +123,7 @@ async function runSweep(mode) {
           type: t('type'),
           outcome: t('outcome'),
           price: t('price'),
+          shares: t('shares'),
           amount: t('amount'),
           time: t('time'),
           txHref: cell('tx')?.querySelector('a')?.href ?? '',
@@ -239,11 +240,13 @@ async function runSweep(mode) {
   const badNumbers = []
   for (const r of rows0) {
     if (r.price !== '--' && !/^\d+\.\d{3}$/.test(r.price)) badNumbers.push(r.price)
+    if (r.shares && !/^\d+\.\d{5}$/.test(r.shares)) badNumbers.push(r.shares)
     if (r.amount && !/^\d+\.\d{5}$/.test(r.amount)) badNumbers.push(r.amount)
+    if (r.shares && sigDigits(r.shares) > 15) badNumbers.push(r.shares)
     if (r.amount && sigDigits(r.amount) > 15) badNumbers.push(r.amount)
   }
   ok(
-    'raw price/amount decimal formatting',
+    'raw price/shares/amount decimal formatting',
     badNumbers.length === 0,
     badNumbers[0] || `checked ${rows0.length} visible rows`,
   )
@@ -390,7 +393,7 @@ async function runSweep(mode) {
   })
   ok(
     'column visibility picker hides selected columns',
-    visibilityMetrics.summary.includes('8/10') &&
+    visibilityMetrics.summary.includes('9/11') &&
       !visibilityMetrics.type.header &&
       !visibilityMetrics.type.cell &&
       !visibilityMetrics.outcome.header &&

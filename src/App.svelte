@@ -94,6 +94,7 @@
   let tableRef: HTMLTableElement
   let measureRaf: number | undefined
   let autoFillKey = ''
+  let shellWidth = '100%'
 
   $: validAddress = ADDRESS_RE.test(address)
   $: allRows = activityState.rows
@@ -166,6 +167,7 @@
     clockTimer = window.setInterval(() => {
       now = Date.now()
     }, 1000)
+    window.addEventListener('resize', scheduleStickyMeasure)
     return () => {
       cleanupRuntime()
     }
@@ -177,6 +179,7 @@
     categorySession?.dispose()
     if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
     if (clockTimer !== undefined) window.clearInterval(clockTimer)
+    window.removeEventListener('resize', scheduleStickyMeasure)
   }
 
   function getProfile(sourceRows: Activity[]) {
@@ -214,7 +217,17 @@
   }
 
   function measureStickyOffsets() {
+    measureShellWidth()
     stickyOffsets = measureColumnStickyOffsets(tableRef, columnLayout.stickyByColumn)
+  }
+
+  function measureShellWidth() {
+    if (!tableRef || typeof window === 'undefined') {
+      shellWidth = '100%'
+      return
+    }
+    const tableWidth = Math.ceil(tableRef.scrollWidth)
+    shellWidth = `${Math.min(tableWidth, window.innerWidth)}px`
   }
 
   function handleColumnMenuToggle(event: Event) {
@@ -246,7 +259,7 @@
 </script>
 
 <div class="grid h-[100dvh] min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] font-mono text-foreground">
-  <header class="sticky top-0 z-30 border-x border-t border-hairline bg-card md:mx-auto md:w-full md:max-w-[1100px]">
+  <header class="sticky top-0 z-30 mx-auto border-x border-t border-hairline bg-card" style={`width: ${shellWidth}`}>
     <div class="flex flex-col">
       <div class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {#if validAddress}
@@ -325,7 +338,7 @@
     </div>
   </header>
 
-  <main class="mx-auto min-h-0 min-w-0 w-full max-w-[1100px] px-0 pb-0 pt-0 md:px-0">
+  <main class="mx-auto min-h-0 min-w-0 px-0 pb-0 pt-0 md:px-0" style={`width: ${shellWidth}`}>
     {#if activityState.error}
       <p class="error ui-message flex items-center gap-3 border-x border-b border-red-600 bg-red-950/30 font-mono uppercase text-red-600" data-testid="error">
         <span class="min-w-0 flex-1 break-words">{activityState.error.message}</span>
@@ -419,6 +432,11 @@
                       {:else}
                         <span class="text-[var(--faint)]">--</span>
                       {/if}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.shares}
+                    <td role="cell" data-col="shares" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'shares' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.shares}`} style={stickyStyleByColumn.shares} title={String(row.size)}>
+                      {@render DecimalNumber(row.size, 5)}
                     </td>
                   {/if}
                   {#if visibleByColumn.amount}

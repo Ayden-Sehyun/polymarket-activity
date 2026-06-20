@@ -80,7 +80,7 @@ The main view is a native HTML table, not a virtualized div grid. The current
 column order is:
 
 ```text
-City | Temp | Date | Side | Type | Outcome | Price | Amount pUSD | Time | Tx
+City | Temp | Date | Side | Type | Outcome | Price | Shares | Amount pUSD | Time | Tx
 ```
 
 Users can choose which columns are visible and sticky. Horizontal scrolling must

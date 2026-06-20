@@ -15,6 +15,7 @@ describe('columnState', () => {
     const storage = memoryStorage({
       'activity-visible-columns': JSON.stringify(['tx', 'nope', 'city']),
       'activity-sticky-columns': JSON.stringify(['price', 'city', 'nope']),
+      'activity-column-schema-version': '2',
     })
 
     expect(readColumnState(storage)).toEqual({
@@ -26,13 +27,26 @@ describe('columnState', () => {
   it('round-trips visible and sticky state through storage', () => {
     const storage = memoryStorage()
     const state: ColumnState = {
-      visibleColumns: ['city', 'temp', 'amount'],
+      visibleColumns: ['city', 'temp', 'shares', 'amount'],
       stickyColumns: ['city', 'temp'],
     }
 
     persistColumnState(storage, state)
 
     expect(readColumnState(storage)).toEqual(state)
+    expect(storage.getItem('activity-column-schema-version')).toBe('2')
+  })
+
+  it('adds new default-visible columns when reading old saved column state', () => {
+    const storage = memoryStorage({
+      'activity-visible-columns': JSON.stringify(['city', 'temp', 'amount']),
+      'activity-sticky-columns': JSON.stringify(['city']),
+    })
+
+    expect(readColumnState(storage)).toEqual({
+      visibleColumns: ['city', 'temp', 'shares', 'amount'],
+      stickyColumns: ['city'],
+    })
   })
 
   it('keeps one visible column and removes sticky state when a column is hidden', () => {
@@ -59,6 +73,7 @@ describe('columnState', () => {
     expect(layout.stickyClassByColumn.temp).toBe('raw-sticky-cell')
     expect(layout.headerClassByColumn.city).toBe('raw-sticky-cell')
     expect(layout.headerClassByColumn.temp).toBe('text-right tabular-nums raw-sticky-cell')
+    expect(layout.headerClassByColumn.shares).toBe('text-right tabular-nums')
     expect(layout.headerClassByColumn.price).toBe('text-right tabular-nums')
     expect(layout.stickyStyleByColumn.date).toBe('left: 220px')
     expect(layout.menuItems.find((item) => item.id === 'city')).toMatchObject({
