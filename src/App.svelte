@@ -48,20 +48,20 @@
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 
   const TYPE_OPTIONS: { value: ActivityType | ''; label: string }[] = [
-    { value: '', label: 'All Types' },
-    { value: 'TRADE', label: 'Trade' },
-    { value: 'REDEEM', label: 'Redeem' },
-    { value: 'CONVERSION', label: 'Convert' },
-    { value: 'SPLIT', label: 'Split' },
-    { value: 'MERGE', label: 'Merge' },
-    { value: 'REWARD', label: 'Reward' },
+    { value: '', label: 'ALL TYPES' },
+    { value: 'TRADE', label: 'TRADE' },
+    { value: 'REDEEM', label: 'REDEEM' },
+    { value: 'CONVERSION', label: 'CONVERT' },
+    { value: 'SPLIT', label: 'SPLIT' },
+    { value: 'MERGE', label: 'MERGE' },
+    { value: 'REWARD', label: 'REWARD' },
   ]
   const AUTO_REFRESH_OPTIONS = [
-    { value: '0', label: 'Auto Refresh: Off' },
-    { value: '5000', label: 'Auto Refresh: 5s' },
-    { value: '15000', label: 'Auto Refresh: 15s' },
-    { value: '30000', label: 'Auto Refresh: 30s' },
-    { value: '60000', label: 'Auto Refresh: 60s' },
+    { value: '0', label: 'AUTO OFF' },
+    { value: '5000', label: 'AUTO 5S' },
+    { value: '15000', label: 'AUTO 15S' },
+    { value: '30000', label: 'AUTO 30S' },
+    { value: '60000', label: 'AUTO 60S' },
   ]
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
 
@@ -105,7 +105,7 @@
   }
   $: statusText = activityState.lastRefreshAt === null
     ? 'REFRESHING'
-    : `${Math.max(0, Math.floor((now - activityState.lastRefreshAt) / 1000))}S SINCE LAST REFRESH`
+    : `${Math.max(0, Math.floor((now - activityState.lastRefreshAt) / 1000))}S AGO`
   $: statusCursor = activityState.nextCursor ? 'more' : validAddress ? 'end' : ''
   $: empty = !activityState.loading && rows.length === 0
   $: profile = getProfile(allRows)
@@ -256,7 +256,7 @@
             data-testid="manual-refresh"
             on:click={refreshNow}
           >
-            Refresh
+            REFRESH
           </button>
           <p
             class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono uppercase text-[var(--secondary-text)]"
@@ -285,24 +285,24 @@
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
             <select bind:value={side} data-testid="filter-side" aria-label="Trade side" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
-            <option value="">Buy + Sell</option>
-            <option value="BUY">Buy</option>
-            <option value="SELL">Sell</option>
+            <option value="">BUY + SELL</option>
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
             <select bind:value={outcome} data-testid="filter-outcome" aria-label="Outcome" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
-            <option value="">Yes + No</option>
+            <option value="">YES + NO</option>
             {#each outcomes as option}
-              <option value={option}>{option}</option>
+              <option value={option}>{option.toUpperCase()}</option>
             {/each}
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
             <select bind:value={category} data-testid="filter-category" aria-label="Market category" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
-            <option value="">All Categories</option>
+            <option value="">ALL CATEGORIES</option>
             {#each categoryOptions as option}
-              <option value={option.value}>{option.label}</option>
+              <option value={option.value}>{option.label.toUpperCase()}</option>
             {/each}
             </select>
           </label>

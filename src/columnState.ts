@@ -31,10 +31,10 @@ export type ColumnMenuItem = {
 const STICKY_STORAGE_KEY = 'activity-sticky-columns'
 const VISIBLE_STORAGE_KEY = 'activity-visible-columns'
 const COLUMN_SCHEMA_STORAGE_KEY = 'activity-column-schema-version'
-const CURRENT_COLUMN_SCHEMA_VERSION = '2'
+const CURRENT_COLUMN_SCHEMA_VERSION = '3'
 const SCHEMA_ADDED_DEFAULT_VISIBLE_COLUMNS: ColumnId[] = ['shares']
 const ALL_COLUMN_IDS = ACTIVITY_COLUMNS.map((column) => column.id)
-const DEFAULT_STICKY_COLUMNS: ColumnId[] = ['city']
+const DEFAULT_STICKY_COLUMNS: ColumnId[] = ['city', 'temp']
 
 export function defaultColumnState(): ColumnState {
   return {
@@ -48,8 +48,10 @@ export function readColumnState(storage: Storage): ColumnState {
     storage,
     readColumnList(storage, VISIBLE_STORAGE_KEY, ALL_COLUMN_IDS, true),
   )
-  const stickyColumns = readColumnList(storage, STICKY_STORAGE_KEY, DEFAULT_STICKY_COLUMNS).filter((column) =>
-    visibleColumns.includes(column),
+  const stickyColumns = migrateStickyColumns(
+    storage,
+    readColumnList(storage, STICKY_STORAGE_KEY, DEFAULT_STICKY_COLUMNS).filter((column) => visibleColumns.includes(column)),
+    visibleColumns,
   )
   return { visibleColumns, stickyColumns }
 }
@@ -125,10 +127,10 @@ export function getColumnLayout(state: ColumnState, stickyOffsets: Partial<Recor
     headerClassByColumn,
     stickySummary:
       activeStickyColumns.length === 0
-        ? 'None Sticky'
-        : `Sticky: ${activeStickyColumns.map((column) => columnLabel(column)).join(' + ')}`,
+        ? 'STICKY NONE'
+        : `STICKY ${activeStickyColumns.map((column) => columnLabel(column)).join(' + ')}`,
     visibleSummary:
-      state.visibleColumns.length === ACTIVITY_COLUMNS.length ? 'Cols: All' : `Cols: ${state.visibleColumns.length}/${ACTIVITY_COLUMNS.length}`,
+      state.visibleColumns.length === ACTIVITY_COLUMNS.length ? 'COLS ALL' : `COLS ${state.visibleColumns.length}/${ACTIVITY_COLUMNS.length}`,
     menuItems: ACTIVITY_COLUMNS.map((column) => ({
       id: column.id,
       label: column.label,
@@ -171,6 +173,11 @@ function migrateVisibleColumns(storage: Storage, columns: ColumnId[]) {
   return orderColumns([...columns, ...SCHEMA_ADDED_DEFAULT_VISIBLE_COLUMNS])
 }
 
+function migrateStickyColumns(storage: Storage, columns: ColumnId[], visibleColumns: ColumnId[]) {
+  if (storage.getItem(COLUMN_SCHEMA_STORAGE_KEY) === CURRENT_COLUMN_SCHEMA_VERSION) return columns
+  return orderColumns([...columns, 'temp']).filter((column) => visibleColumns.includes(column))
+}
+
 function orderColumns(columns: ColumnId[]) {
   const selected = new Set(columns)
   return ALL_COLUMN_IDS.filter((id) => selected.has(id))
@@ -188,7 +195,7 @@ function booleanByColumn(columns: ColumnId[]) {
 }
 
 function columnLabel(column: ColumnId) {
-  return ACTIVITY_COLUMNS.find((def) => def.id === column)?.label ?? column
+  return ACTIVITY_COLUMNS.find((def) => def.id === column)?.label.toUpperCase() ?? column.toUpperCase()
 }
 
 function joinClasses(...classes: string[]) {

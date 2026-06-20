@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import { createEventDispatcher } from 'svelte'
   import type { ColumnId, ColumnLayout, ColumnMenuItem } from './columnState'
 
@@ -11,6 +12,25 @@
   const COLUMN_MENU_ITEM_CLASS =
     'flex items-center gap-2 border-b border-hairline px-3 py-2 font-mono text-[11px] uppercase leading-4 last:border-b-0 hover:bg-secondary'
   type ColumnMenuKind = 'sticky' | 'visible'
+
+  let configRow: HTMLDivElement
+
+  onMount(() => {
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (configRow?.contains(event.target as Node)) return
+      closeMenus()
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeMenus()
+    }
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  })
 
   function handleColumnMenuToggle(event: Event) {
     const details = event.currentTarget as HTMLDetailsElement
@@ -28,9 +48,15 @@
   function toggleColumnMenuItem(kind: ColumnMenuKind, column: ColumnMenuItem) {
     dispatch(kind === 'sticky' ? 'toggleSticky' : 'toggleVisible', column.id)
   }
+
+  function closeMenus() {
+    configRow?.querySelectorAll<HTMLDetailsElement>('.column-menu[open]').forEach((details) => {
+      details.open = false
+    })
+  }
 </script>
 
-<div data-testid="config-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+<div bind:this={configRow} data-testid="config-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
   {@render ColumnMenu('sticky')}
   {@render ColumnMenu('visible')}
 </div>

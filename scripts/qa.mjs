@@ -338,7 +338,7 @@ async function runSweep(mode) {
   )
   ok(
     'sticky column picker pins selected columns',
-    stickyMetrics.summary.includes('City + Temp + Date') && stickyTriple && sideUnsticky && offsetsMatch && positionsMatch,
+    stickyMetrics.summary.includes('CITY + TEMP + DATE') && stickyTriple && sideUnsticky && offsetsMatch && positionsMatch,
     stickyMetrics.summary,
   )
 
@@ -366,6 +366,13 @@ async function runSweep(mode) {
       columnMenuState.hitTestId.startsWith('column-'),
     `${columnMenuState.position}/${columnMenuState.hitTestId || columnMenuState.hitText}`,
   )
+  await page.mouse.click(2, 2)
+  await sleep(150)
+  const columnMenuClosed = await page.evaluate(
+    () => !document.querySelector('[data-testid="columns-summary"]')?.closest('details')?.hasAttribute('open'),
+  )
+  ok('column visibility picker closes on outside click', columnMenuClosed)
+  await page.locator('[data-testid="columns-summary"]').click()
   await page.locator('[data-testid="column-type"]').uncheck()
   await page.locator('[data-testid="column-outcome"]').uncheck()
   await sleep(300)

@@ -98,7 +98,7 @@
       disabled={fetchingNextPage || fetching}
       on:click={() => dispatch('loadMore')}
     >
-      {fetchingNextPage ? 'Loading more...' : 'Load more'}
+      {fetchingNextPage ? 'LOADING MORE' : 'LOAD MORE'}
     </button>
   </div>
 {/if}

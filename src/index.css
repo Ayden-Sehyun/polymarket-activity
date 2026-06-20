@@ -210,6 +210,8 @@
     padding: 4px var(--px-cell);
     border-bottom: 1px solid var(--hairline);
     background-color: var(--card);
+    background-image: linear-gradient(to bottom, var(--row-accent, transparent) 0 3px, transparent 3px);
+    background-repeat: no-repeat;
     font-size: var(--text-table-body);
     line-height: var(--line-row);
     overflow: hidden;
@@ -225,9 +227,7 @@
   }
 
   .raw-accent-cell {
-    padding-left: calc(var(--px-cell) + 4px);
-    background-image: linear-gradient(to right, var(--row-accent, transparent) 0 4px, transparent 4px);
-    background-repeat: no-repeat;
+    padding-left: var(--px-cell);
   }
 
   .raw-head .raw-sticky-cell {
@@ -240,7 +240,7 @@
   }
 
   .raw-row:hover .raw-accent-cell {
-    background-image: linear-gradient(to right, var(--row-accent, transparent) 0 4px, transparent 4px);
+    background-image: linear-gradient(to bottom, var(--row-accent, transparent) 0 3px, transparent 3px);
   }
 
   .column-menu[open] .column-menu-panel {
@@ -257,12 +257,10 @@
   }
 
   .raw-link-anchor {
-    display: inline-flex;
-    height: 24px;
-    min-width: 32px;
-    align-items: center;
-    justify-content: center;
-    padding-inline: 4px;
+    display: inline;
+    height: auto;
+    min-width: 0;
+    padding-inline: 0;
     font-size: var(--text-table-body);
     line-height: var(--line-row);
     text-decoration: none;

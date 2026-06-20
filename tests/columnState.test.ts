@@ -19,7 +19,7 @@ describe('columnState', () => {
     })
 
     expect(readColumnState(storage)).toEqual({
-      visibleColumns: ['city', 'tx'],
+      visibleColumns: ['city', 'shares', 'tx'],
       stickyColumns: ['city'],
     })
   })
@@ -34,7 +34,7 @@ describe('columnState', () => {
     persistColumnState(storage, state)
 
     expect(readColumnState(storage)).toEqual(state)
-    expect(storage.getItem('activity-column-schema-version')).toBe('2')
+    expect(storage.getItem('activity-column-schema-version')).toBe('3')
   })
 
   it('adds new default-visible columns when reading old saved column state', () => {
@@ -45,7 +45,7 @@ describe('columnState', () => {
 
     expect(readColumnState(storage)).toEqual({
       visibleColumns: ['city', 'temp', 'shares', 'amount'],
-      stickyColumns: ['city'],
+      stickyColumns: ['city', 'temp'],
     })
   })
 
@@ -65,11 +65,11 @@ describe('columnState', () => {
   })
 
   it('derives summaries, checkbox state, and sticky styles from one interface', () => {
-    const state = toggleStickyColumn(toggleStickyColumn(defaultColumnState(), 'temp'), 'date')
+    const state = toggleStickyColumn(defaultColumnState(), 'date')
     const layout = getColumnLayout(state, { city: 0, temp: 128, date: 220 })
 
-    expect(layout.stickySummary).toBe('Sticky: City + Temp + Date')
-    expect(layout.visibleSummary).toBe('Cols: All')
+    expect(layout.stickySummary).toBe('STICKY CITY + TEMP + DATE')
+    expect(layout.visibleSummary).toBe('COLS ALL')
     expect(layout.stickyClassByColumn.temp).toBe('raw-sticky-cell')
     expect(layout.headerClassByColumn.city).toBe('raw-sticky-cell')
     expect(layout.headerClassByColumn.temp).toBe('text-right tabular-nums raw-sticky-cell')
