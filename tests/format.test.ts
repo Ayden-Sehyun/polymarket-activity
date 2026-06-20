@@ -5,6 +5,7 @@ import {
   displayType,
   eventAccentForIndex,
   formatDecimal,
+  formatDecimalText,
   formatPusdBalance,
   formatTimeShort,
   outcomeClass,
@@ -62,6 +63,7 @@ describe('format helpers', () => {
     expect(formatDecimal(0.005, 5)).toEqual({ whole: '0', meaningful: '005', padding: '00' })
     expect(formatDecimal(7.48214, 5)).toEqual({ whole: '7', meaningful: '48214', padding: '' })
     expect(formatDecimal(Number.NaN, 5)).toBeNull()
+    expect(formatDecimalText(0.01, 3)).toBe('0.010')
     expect(formatPusdBalance(61.789)).toBe('61.79')
   })
 

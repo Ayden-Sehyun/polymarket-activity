@@ -89,7 +89,7 @@ export const outcomeClass = (value: string) =>
 
 export function formatDecimal(value: number, decimals: number) {
   if (!Number.isFinite(value)) return null
-  const fixed = value.toFixed(decimals)
+  const fixed = formatDecimalText(value, decimals)
   const [whole, fraction = ''] = fixed.split('.')
   const meaningfulLength = fraction.replace(/0+$/, '').length
   return {
@@ -97,6 +97,10 @@ export function formatDecimal(value: number, decimals: number) {
     meaningful: fraction.slice(0, meaningfulLength),
     padding: fraction.slice(meaningfulLength),
   }
+}
+
+export function formatDecimalText(value: number, decimals: number) {
+  return Number.isFinite(value) ? value.toFixed(decimals) : ''
 }
 
 export function formatPusdBalance(value: number) {

@@ -121,5 +121,6 @@ Important current hooks include:
 ```text
 raw-table, raw-loading, raw-header, raw-row, cell-type, status, error, prompt,
 filter-row, config-row, filter-type, filter-side, filter-outcome,
-filter-category, sticky-summary, columns-summary, load-more, back-to-top
+filter-category, sticky-summary, columns-summary, load-more, back-to-top,
+price-sum-toggle, price-sum-bar, price-sum-equation, price-sum-clear
 ```

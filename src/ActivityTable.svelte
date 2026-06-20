@@ -10,7 +10,8 @@
     type ColumnId,
     type ColumnState,
   } from './columnState'
-  import { formatDecimal, sequentialEventGroupAccents } from './format'
+  import { formatDecimal, formatDecimalText, sequentialEventGroupAccents } from './format'
+  import { isSelectablePrice, PRICE_SUM_DECIMALS } from './priceSumSelection'
 
   export let rows: Activity[] = []
   export let eventCategories: CategoryMap = {}
@@ -23,12 +24,17 @@
   export let fetchingNextPage = false
   export let fetching = false
   export let colorMode: ColorBarMode = 'horizontal'
+  export let selectedPriceKeys: ReadonlySet<string> = new Set()
 
   const dispatch = createEventDispatcher<{
     loadMore: void
     measured: {
       stickyOffsets: Partial<Record<ColumnId, number>>
       shellWidth: string
+    }
+    priceToggle: {
+      key: string
+      price: number
     }
   }>()
 
@@ -75,6 +81,7 @@
     {@render RawHeader()}
     <tbody>
       {#each rows as row, index (activityKey(row))}
+        {@const rowKey = activityKey(row)}
         {@const displayRow = toActivityDisplayRow(row, eventCategories)}
         <tr
           data-testid="raw-row"
@@ -83,7 +90,7 @@
           class="raw-row group"
           style={`--row-accent: ${rowAccents[index] ?? 'transparent'}`}
         >
-          {@render RawCells(displayRow)}
+          {@render RawCells(displayRow, rowKey)}
         </tr>
       {/each}
     </tbody>
@@ -122,22 +129,22 @@
   </thead>
 {/snippet}
 
-{#snippet RawCells(row: ActivityDisplayRow)}
+{#snippet RawCells(row: ActivityDisplayRow, rowKey: string)}
   {#each visibleColumnDefs as column}
     <td
       role="cell"
       data-col={column.id}
       data-testid={column.id === 'type' ? 'cell-type' : undefined}
-      class={`raw-cell ${column.cellClass(row)} ${firstVisibleColumn === column.id ? 'raw-accent-cell' : ''} ${stickyClassByColumn[column.id]}`}
+      class={`raw-cell ${column.cellClass(row)} ${firstVisibleColumn === column.id ? 'raw-accent-cell' : ''} ${column.id === 'price' && selectedPriceKeys.has(rowKey) ? 'raw-price-cell-selected' : ''} ${stickyClassByColumn[column.id]}`}
       style={stickyStyleByColumn[column.id]}
       title={column.title(row)}
     >
-      {@render CellContent(column.id, row)}
+      {@render CellContent(column.id, row, rowKey)}
     </td>
   {/each}
 {/snippet}
 
-{#snippet CellContent(columnId: ColumnId, row: ActivityDisplayRow)}
+{#snippet CellContent(columnId: ColumnId, row: ActivityDisplayRow, rowKey: string)}
   {#if columnId === 'city'}
     {row.city}
   {:else if columnId === 'temp'}
@@ -151,8 +158,19 @@
   {:else if columnId === 'outcome'}
     {row.outcome}
   {:else if columnId === 'price'}
-    {#if row.source.type === 'TRADE' && row.price > 0}
-      {@render DecimalNumber(row.price, 3)}
+    {#if row.source.type === 'TRADE' && isSelectablePrice(row.price)}
+      {@const selected = selectedPriceKeys.has(rowKey)}
+      {@const priceText = formatDecimalText(row.price, PRICE_SUM_DECIMALS)}
+      <button
+        type="button"
+        class="raw-price-button"
+        data-testid="price-sum-toggle"
+        aria-pressed={selected}
+        aria-label={`${selected ? 'Remove' : 'Add'} price ${priceText} ${selected ? 'from' : 'to'} sum`}
+        on:click={() => dispatch('priceToggle', { key: rowKey, price: row.price })}
+      >
+        {@render DecimalNumber(row.price, PRICE_SUM_DECIMALS)}
+      </button>
     {:else}
       <span class="text-[var(--faint)]">--</span>
     {/if}

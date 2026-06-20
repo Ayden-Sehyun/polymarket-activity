@@ -276,6 +276,78 @@
     background-color: var(--secondary);
   }
 
+  .raw-price-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 100%;
+    height: 24px;
+    margin-inline: -4px;
+    padding-inline: 4px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+  }
+
+  .raw-price-cell-selected .raw-price-button {
+    border-color: var(--secondary-text);
+    background-color: var(--secondary);
+    color: var(--foreground);
+  }
+
+  .price-sum-bar {
+    position: fixed;
+    left: 50%;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    z-index: 50;
+    display: flex;
+    min-width: 0;
+    height: 36px;
+    transform: translateX(-50%);
+    border: 1px solid var(--hairline);
+    background: var(--card);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+    font-family: var(--font-mono);
+    font-size: var(--text-ui-value);
+    font-weight: 600;
+    line-height: var(--line-ui);
+  }
+
+  .price-sum-equation {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    overflow-x: auto;
+    padding-inline: var(--px-cell);
+    color: var(--foreground);
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  .price-sum-equation::-webkit-scrollbar {
+    display: none;
+  }
+
+  .price-sum-clear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-left: 1px solid var(--hairline);
+    padding-inline: var(--px-cell);
+    background: var(--card);
+    color: var(--foreground);
+    font: inherit;
+    text-transform: uppercase;
+  }
+
+  .price-sum-clear:hover,
+  .price-sum-clear:focus-visible {
+    background: var(--secondary);
+  }
+
   .column-menu[open] .column-menu-panel {
     display: grid;
   }

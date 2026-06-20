@@ -200,6 +200,29 @@ try {
   await page.locator('[data-testid="filter-category"]').selectOption('')
   await page.waitForSelector(ROW, { timeout: 12000 })
 
+  const priceButtons = page.locator('[data-testid="price-sum-toggle"]')
+  await priceButtons.nth(0).click()
+  await page.waitForSelector('[data-testid="price-sum-bar"]', { timeout: 12000 })
+  let equation = (await page.locator('[data-testid="price-sum-equation"]').textContent())?.trim()
+  ok('price sum starts with a single selected price', equation === '0.001 = 0.001', equation ?? '')
+
+  await priceButtons.nth(1).click()
+  equation = (await page.locator('[data-testid="price-sum-equation"]').textContent())?.trim()
+  ok('price sum equation follows click order', equation === '0.001 + 0.001 = 0.002', equation ?? '')
+
+  await priceButtons.nth(0).click()
+  equation = (await page.locator('[data-testid="price-sum-equation"]').textContent())?.trim()
+  ok('clicking a selected price removes it from the sum', equation === '0.001 = 0.001', equation ?? '')
+
+  await page.locator('[data-testid="price-sum-clear"]').click()
+  ok('clear hides the price sum bar', (await page.locator('[data-testid="price-sum-bar"]').count()) === 0)
+
+  await priceButtons.nth(0).click()
+  await page.locator('[data-testid="filter-type"]').selectOption('CONVERSION')
+  ok('filter changes clear selected prices', (await page.locator('[data-testid="price-sum-bar"]').count()) === 0)
+  await page.locator('[data-testid="filter-type"]').selectOption('')
+  await page.waitForSelector(ROW, { timeout: 12000 })
+
   await page.locator('[data-testid="filter-type"]').selectOption('CONVERSION')
   await page.waitForFunction(
     () => {

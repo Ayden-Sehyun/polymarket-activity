@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import {
     fetchActivityPage,
+    activityKey,
     fetchEventMetadata,
     fetchPusdBalance,
     type Activity,
@@ -41,6 +42,12 @@
   import ActivityTable from './ActivityTable.svelte'
   import ColumnConfig from './ColumnConfig.svelte'
   import { formatPusdBalance, shortHash } from './format'
+  import {
+    formatPriceEquation,
+    reconcilePriceSelection,
+    togglePriceSelection,
+    type PriceSelectionItem,
+  } from './priceSumSelection'
 
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 
@@ -83,9 +90,12 @@
   let shellWidth = '100%'
   let colorMode: ColorBarMode = DEFAULT_COLOR_BAR_MODE
   let lastAmbientRefreshAt = 0
+  let priceSelection: PriceSelectionItem[] = []
 
   $: validAddress = ADDRESS_RE.test(address)
   $: allRows = activityState.rows
+  $: priceSelectionKeys = new Set(priceSelection.map((item) => item.key))
+  $: priceEquation = formatPriceEquation(priceSelection)
   $: outcomes = [...new Set(allRows.map((row) => row.outcome).filter(Boolean))].sort()
   $: eventCategories = categoryState.categories
   $: categoryOptions = getCategoryOptions(allRows, eventCategories)
@@ -111,12 +121,20 @@
     document.title = validAddress ? `@${titleIdentity} on Polymarket` : 'Polymarket Activity'
   }
   $: categorySession?.hydrate(allRows)
+  $: {
+    const reconciledSelection = reconcilePriceSelection(
+      priceSelection,
+      allRows.map((row) => activityKey(row)),
+    )
+    if (reconciledSelection !== priceSelection) priceSelection = reconciledSelection
+  }
   $: syncAutoRefreshTimer(Number(autoRefreshMs), validAddress && activitySession !== null && balanceSession !== null)
   $: if (activitySession) {
     const nextUiQueryKey = `${address.toLowerCase()}|${validAddress}`
     if (nextUiQueryKey !== uiQueryKey) {
       uiQueryKey = nextUiQueryKey
       showTop = false
+      clearPriceSum()
       if (parentRef) parentRef.scrollTop = 0
     }
     activitySession.setQuery({ address, validAddress })
@@ -187,12 +205,14 @@
   }
 
   function toggleStickyColumn(column: ColumnId) {
+    clearPriceSum()
     columnState = toggleColumnSticky(columnState, column)
     persistColumnState(window.localStorage, columnState)
     void scheduleStickyMeasure()
   }
 
   function toggleVisibleColumn(column: ColumnId) {
+    clearPriceSum()
     columnState = toggleColumnVisible(columnState, column)
     persistColumnState(window.localStorage, columnState)
     void scheduleStickyMeasure()
@@ -213,21 +233,25 @@
   }
 
   function changeType(event: Event) {
+    clearPriceSum()
     type = (event.currentTarget as HTMLSelectElement).value as ActivityType | ''
     setActivityOption({ type })
   }
 
   function changeSide(event: Event) {
+    clearPriceSum()
     side = (event.currentTarget as HTMLSelectElement).value as Side | ''
     setActivityOption({ side })
   }
 
   function changeOutcome(event: Event) {
+    clearPriceSum()
     outcome = (event.currentTarget as HTMLSelectElement).value
     setActivityOption({ outcome })
   }
 
   function changeCategory(event: Event) {
+    clearPriceSum()
     category = (event.currentTarget as HTMLSelectElement).value
     setActivityOption({ category })
   }
@@ -264,6 +288,14 @@
   function refreshNow() {
     void activitySession?.refreshLatest()
     balanceSession?.refresh()
+  }
+
+  function togglePriceSum(event: CustomEvent<{ key: string; price: number }>) {
+    priceSelection = togglePriceSelection(priceSelection, event.detail.key, event.detail.price)
+  }
+
+  function clearPriceSum() {
+    if (priceSelection.length > 0) priceSelection = []
   }
 
   function syncAutoRefreshTimer(refreshIntervalMs: number, enabled: boolean) {
@@ -463,6 +495,7 @@
           {columnState}
           {stickyOffsets}
           {colorMode}
+          selectedPriceKeys={priceSelectionKeys}
           loading={activityState.loading}
           {empty}
           {validAddress}
@@ -471,11 +504,19 @@
           fetching={activityState.fetching}
           on:measured={handleTableMeasured}
           on:loadMore={() => activitySession?.loadNext(true)}
+          on:priceToggle={togglePriceSum}
         />
       </div>
     </div>
   </main>
-  {#if showTop}
+  {#if priceSelection.length > 0}
+    <div class="price-sum-bar" data-testid="price-sum-bar" style={`width: min(${shellWidth}, calc(100vw - 16px))`}>
+      <div class="price-sum-equation" data-testid="price-sum-equation" title={priceEquation}>{priceEquation}</div>
+      <button type="button" class="price-sum-clear" data-testid="price-sum-clear" on:click={clearPriceSum}>CLEAR</button
+      >
+    </div>
+  {/if}
+  {#if showTop && priceSelection.length === 0}
     <button
       type="button"
       data-testid="back-to-top"
