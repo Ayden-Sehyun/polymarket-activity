@@ -95,6 +95,7 @@
   --px-chrome: 8px;
   --px-cell: 12px;
   --gap-cell: 8px;
+  --safe-top-buffer: 0px;
 
   color-scheme: dark;
 }
@@ -134,12 +135,15 @@
   .app-root {
     box-sizing: border-box;
     height: 100dvh;
-    padding-top: env(safe-area-inset-top);
+    padding-top: calc(env(safe-area-inset-top) + var(--safe-top-buffer));
+  }
+
+  .app-shell {
+    border-top: 1px solid var(--hairline);
   }
 
   .top-status-row {
     position: relative;
-    border-top: 1px solid var(--hairline);
     border-bottom: 1px solid var(--hairline);
   }
 
@@ -305,5 +309,12 @@
     .ui-top-cell {
       height: var(--h-top);
     }
+  }
+
+}
+
+@media (max-width: 767px) {
+  :root {
+    --safe-top-buffer: 2px;
   }
 }

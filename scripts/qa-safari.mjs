@@ -117,13 +117,19 @@ try {
     themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? '',
     statusBarStyle: document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute('content') ?? '',
     htmlBackground: getComputedStyle(document.documentElement).backgroundColor,
+    rootPaddingTop: getComputedStyle(document.querySelector('.app-root')).paddingTop,
+    shellBorderTopWidth: getComputedStyle(document.querySelector('.app-shell')).borderTopWidth,
+    topRowBorderTopWidth: getComputedStyle(document.querySelector('.top-status-row')).borderTopWidth,
   }))
   ok(
     'mobile Safari safe area metadata asks for black browser chrome',
     safeAreaMetadata.viewport.includes('viewport-fit=cover') &&
       safeAreaMetadata.themeColor === '#000000' &&
       safeAreaMetadata.statusBarStyle === 'black-translucent' &&
-      safeAreaMetadata.htmlBackground === 'rgb(0, 0, 0)',
+      safeAreaMetadata.htmlBackground === 'rgb(0, 0, 0)' &&
+      Number.parseFloat(safeAreaMetadata.rootPaddingTop) >= 2 &&
+      safeAreaMetadata.shellBorderTopWidth === '1px' &&
+      safeAreaMetadata.topRowBorderTopWidth === '0px',
     JSON.stringify(safeAreaMetadata),
   )
 
