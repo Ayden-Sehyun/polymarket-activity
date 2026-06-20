@@ -1,14 +1,14 @@
 export const COLUMN_DEFS = [
-  { id: 'city', label: 'City' },
-  { id: 'temp', label: 'Temp' },
-  { id: 'date', label: 'Date' },
-  { id: 'side', label: 'Side' },
-  { id: 'type', label: 'Type' },
-  { id: 'outcome', label: 'Outcome' },
-  { id: 'price', label: 'Price' },
-  { id: 'amount', label: 'Amount pUSD' },
-  { id: 'time', label: 'Time' },
-  { id: 'tx', label: 'Tx' },
+  { id: 'city', label: 'City', align: 'left' },
+  { id: 'temp', label: 'Temp', align: 'right' },
+  { id: 'date', label: 'Date', align: 'right' },
+  { id: 'side', label: 'Side', align: 'left' },
+  { id: 'type', label: 'Type', align: 'left' },
+  { id: 'outcome', label: 'Outcome', align: 'left' },
+  { id: 'price', label: 'Price', align: 'right' },
+  { id: 'amount', label: 'Amount pUSD', align: 'right' },
+  { id: 'time', label: 'Time', align: 'right' },
+  { id: 'tx', label: 'Tx', align: 'right' },
 ] as const
 
 export type ColumnId = (typeof COLUMN_DEFS)[number]['id']
@@ -24,6 +24,7 @@ export type ColumnLayout = {
   stickyByColumn: Record<ColumnId, boolean>
   stickyClassByColumn: Record<ColumnId, string>
   stickyStyleByColumn: Record<ColumnId, string>
+  headerClassByColumn: Record<ColumnId, string>
   stickySummary: string
   visibleSummary: string
   menuItems: ColumnMenuItem[]
@@ -108,6 +109,13 @@ export function getColumnLayout(state: ColumnState, stickyOffsets: Partial<Recor
     },
     {} as Record<ColumnId, string>,
   )
+  const headerClassByColumn = COLUMN_DEFS.reduce(
+    (out, column) => {
+      out[column.id] = joinClasses(column.align === 'right' ? 'text-right tabular-nums' : '', stickyClassByColumn[column.id])
+      return out
+    },
+    {} as Record<ColumnId, string>,
+  )
 
   return {
     visibleByColumn,
@@ -117,6 +125,7 @@ export function getColumnLayout(state: ColumnState, stickyOffsets: Partial<Recor
     stickyByColumn,
     stickyClassByColumn,
     stickyStyleByColumn,
+    headerClassByColumn,
     stickySummary:
       activeStickyColumns.length === 0
         ? 'None Sticky'
@@ -178,4 +187,8 @@ function booleanByColumn(columns: ColumnId[]) {
 
 function columnLabel(column: ColumnId) {
   return COLUMN_DEFS.find((def) => def.id === column)?.label ?? column
+}
+
+function joinClasses(...classes: string[]) {
+  return classes.filter(Boolean).join(' ')
 }

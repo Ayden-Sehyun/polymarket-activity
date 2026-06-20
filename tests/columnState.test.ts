@@ -57,6 +57,9 @@ describe('columnState', () => {
     expect(layout.stickySummary).toBe('Sticky: City + Temp + Date')
     expect(layout.visibleSummary).toBe('Cols: All')
     expect(layout.stickyClassByColumn.temp).toBe('raw-sticky-cell')
+    expect(layout.headerClassByColumn.city).toBe('raw-sticky-cell')
+    expect(layout.headerClassByColumn.temp).toBe('text-right tabular-nums raw-sticky-cell')
+    expect(layout.headerClassByColumn.price).toBe('text-right tabular-nums')
     expect(layout.stickyStyleByColumn.date).toBe('left: 220px')
     expect(layout.menuItems.find((item) => item.id === 'city')).toMatchObject({
       visibleChecked: true,

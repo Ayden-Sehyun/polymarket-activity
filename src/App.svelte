@@ -106,6 +106,7 @@
   $: firstVisibleColumn = columnLayout.firstVisibleColumn
   $: stickyClassByColumn = columnLayout.stickyClassByColumn
   $: stickyStyleByColumn = columnLayout.stickyStyleByColumn
+  $: headerClassByColumn = columnLayout.headerClassByColumn
   $: visibleKey = columnState.visibleColumns.join('|')
   $: stickyKey = columnLayout.activeStickyColumns.join('|')
   $: {
@@ -516,36 +517,9 @@
 {#snippet RawHeader()}
   <thead class="raw-head" data-testid="raw-header">
     <tr>
-      {#if visibleByColumn.city}
-        <th role="columnheader" data-col="city" class={stickyClassByColumn.city} style={stickyStyleByColumn.city}>City</th>
-      {/if}
-      {#if visibleByColumn.temp}
-        <th role="columnheader" data-col="temp" class={`text-right tabular-nums ${stickyClassByColumn.temp}`} style={stickyStyleByColumn.temp}>Temp</th>
-      {/if}
-      {#if visibleByColumn.date}
-        <th role="columnheader" data-col="date" class={`text-right tabular-nums ${stickyClassByColumn.date}`} style={stickyStyleByColumn.date}>Date</th>
-      {/if}
-      {#if visibleByColumn.side}
-        <th role="columnheader" data-col="side" class={stickyClassByColumn.side} style={stickyStyleByColumn.side}>Side</th>
-      {/if}
-      {#if visibleByColumn.type}
-        <th role="columnheader" data-col="type" class={stickyClassByColumn.type} style={stickyStyleByColumn.type}>Type</th>
-      {/if}
-      {#if visibleByColumn.outcome}
-        <th role="columnheader" data-col="outcome" class={stickyClassByColumn.outcome} style={stickyStyleByColumn.outcome}>Outcome</th>
-      {/if}
-      {#if visibleByColumn.price}
-        <th role="columnheader" data-col="price" class={`text-right tabular-nums ${stickyClassByColumn.price}`} style={stickyStyleByColumn.price}>Price</th>
-      {/if}
-      {#if visibleByColumn.amount}
-        <th role="columnheader" data-col="amount" class={`text-right tabular-nums ${stickyClassByColumn.amount}`} style={stickyStyleByColumn.amount}>Amount pUSD</th>
-      {/if}
-      {#if visibleByColumn.time}
-        <th role="columnheader" data-col="time" class={`text-right tabular-nums ${stickyClassByColumn.time}`} style={stickyStyleByColumn.time}>Time</th>
-      {/if}
-      {#if visibleByColumn.tx}
-        <th role="columnheader" data-col="tx" class={`text-right tabular-nums ${stickyClassByColumn.tx}`} style={stickyStyleByColumn.tx}>Tx</th>
-      {/if}
+      {#each visibleColumnDefs as column}
+        <th role="columnheader" data-col={column.id} class={headerClassByColumn[column.id]} style={stickyStyleByColumn[column.id]}>{column.label}</th>
+      {/each}
     </tr>
   </thead>
 {/snippet}
