@@ -102,7 +102,7 @@
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply touch-manipulation border-border outline-ring/50;
   }
   html {
     @apply font-sans;
@@ -113,6 +113,7 @@
       'tnum' 1,
       'zero' 1;
     -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body {
     @apply text-foreground;
