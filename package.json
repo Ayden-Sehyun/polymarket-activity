@@ -1,16 +1,19 @@
 {
   "name": "2026-06-11-polymarket-activity-tanstack",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "private": true,
+  "description": "Dense Svelte wallet-activity table for Polymarket.",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "qa": "node scripts/qa.mjs",
+    "qa:desktop": "node scripts/qa.mjs desktop",
+    "qa:mobile": "node scripts/qa.mjs mobile",
+    "qa:error": "node scripts/qa-error.mjs",
+    "smoke": "node scripts/smoke-prod.mjs",
+    "test": "npm run qa && npm run qa:error",
     "preview": "vite preview"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "type": "module",
   "dependencies": {

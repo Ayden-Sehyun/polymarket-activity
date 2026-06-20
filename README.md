@@ -1,20 +1,40 @@
-# Polymarket activity viewer
+# Polymarket Activity Viewer
 
-Polymarket's profile activity tab without the sign-in wall — talks straight to the
-public `data-api.polymarket.com/activity` endpoint (CORS is `*`, no auth).
+Dense internal wallet-activity table for Polymarket. The app is a single-page
+Vite + Svelte application that reads the wallet from `?address=` and talks
+directly to public Polymarket endpoints.
 
 ```sh
 npm install
 npm run dev     # http://localhost:5173
 ```
 
-- **Stack:** Vite + React, TanStack Query (infinite pagination), TanStack Table, TanStack Virtual.
-- **Pagination:** the API caps `offset` at 3000; when the app hits the cap it restarts at
-  `offset=0` with `end=<oldest timestamp seen>` and dedupes the inclusive boundary rows,
-  so scrolling reaches the full history.
-- **Filters:** type (trade/redeem/convert/split/merge/reward) and side (buy/sell) are
-  API params; outcome (Yes/No/Up/Down/…) is filtered client-side over loaded rows.
-- **Numbers** are formatted to 6 significant figures; tx links go to Polygonscan,
-  market/slug links to polymarket.com.
-- **QA:** with the dev server running — `node scripts/qa.mjs` (full feature sweep in
-  headless Chromium) and `node scripts/qa-error.mjs` (network-failure + retry probe).
+- **Stack:** Vite, Svelte, Tailwind v4, native HTML table.
+- **Data:** `data-api.polymarket.com/activity` for activity, Gamma event
+  metadata for category tags, Polygon RPC for pUSD balance.
+- **Pagination:** first request loads 50 rows for faster LCP. Load More uses
+  500-row pages, continues to offset 3000, then window-jumps with
+  `end=<oldest timestamp seen>` and dedupes inclusive boundary rows.
+- **Filters:** type and side are server-side API params. outcome and category
+  filter loaded rows client-side; the default category is Weather and can
+  auto-load a few more pages when the first preview has no matching rows.
+- **Table:** user-configurable visible/sticky columns, horizontal scroll inside
+  the table container, deterministic event accent rail, compact terminal-style
+  layout.
+
+## Commands
+
+```sh
+npm run build
+npm run qa
+npm run qa:desktop
+npm run qa:mobile
+npm run qa:error
+npm run smoke -- <baseUrl> <wallet>
+```
+
+Deploy:
+
+```sh
+npm run build && npx wrangler pages deploy dist --project-name onedam --branch main --commit-dirty=true
+```

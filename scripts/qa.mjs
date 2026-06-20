@@ -13,6 +13,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const RAW_ROW = '[data-testid="raw-row"]'
 
+const mockActivity = (index, overrides = {}) => ({
+  proxyWallet: DEFAULT,
+  timestamp: 1_781_900_000 - index,
+  conditionId: `condition-${index}`,
+  type: 'TRADE',
+  size: 1,
+  usdcSize: 0.01,
+  transactionHash: `0x${index.toString(16).padStart(64, '0')}`,
+  price: 0.1,
+  asset: `asset-${index}`,
+  side: 'BUY',
+  outcomeIndex: 0,
+  title: 'Will Alice win the 2028 presidential election?',
+  slug: `mock-politics-${index}`,
+  icon: '',
+  eventSlug: `mock-politics-${index}`,
+  outcome: 'Yes',
+  name: 'Mock',
+  pseudonym: 'Mock',
+  ...overrides,
+})
+
 async function runSweep(mode) {
   const isMobile = mode === 'mobile'
   const label = isMobile ? 'MOBILE (iPhone 14)' : 'DESKTOP (1440x950)'
@@ -86,24 +108,24 @@ async function runSweep(mode) {
     return { shown: m ? +m[1] : 0, total: m ? +m[1] : 0, text }
   }
 
-  // Structured extraction from the raw div-grid rows.
+  // Structured extraction from the raw table rows.
   const sigText = (s) => (s || '').replace(/[$,¢\s]/g, '')
   const visibleRows = () =>
     page.$$eval(RAW_ROW, (els) =>
       els.map((el) => {
-        const cells = [...el.querySelectorAll('[role="cell"]')]
-        const t = (i) => cells[i]?.textContent?.trim() ?? ''
+        const cell = (col) => el.querySelector(`[data-col="${col}"]`)
+        const t = (col) => cell(col)?.textContent?.trim() ?? ''
         return {
-          title: t(0),
-          temp: t(1),
-          date: t(2),
-          side: t(3),
-          type: t(4),
-          outcome: t(5),
-          price: t(6),
-          amount: t(7),
-          time: t(8),
-          txHref: cells[9]?.querySelector('a')?.href ?? '',
+          title: t('city'),
+          temp: t('temp'),
+          date: t('date'),
+          side: t('side'),
+          type: t('type'),
+          outcome: t('outcome'),
+          price: t('price'),
+          amount: t('amount'),
+          time: t('time'),
+          txHref: cell('tx')?.querySelector('a')?.href ?? '',
         }
       }),
     )
@@ -121,7 +143,7 @@ async function runSweep(mode) {
           if (rows.length === 0) return false
           if (!want) return true
           return rows.every((r) => {
-            const t = r.querySelectorAll('[role="cell"]')[4]?.textContent?.trim()
+            const t = r.querySelector('[data-col="type"]')?.textContent?.trim()
             return t === want
           })
         },
@@ -141,6 +163,48 @@ async function runSweep(mode) {
     apiCalls.length === 0 && !(await page.locator('.hint').count()),
     `prompt shown, ${apiCalls.length} api calls`,
   )
+
+  // ---- 0b. default Weather should scan past an empty 50-row preview
+  const mockPage = await context.newPage()
+  let mockActivityCalls = 0
+  const firstPreview = Array.from({ length: 50 }, (_, i) => mockActivity(i))
+  const weatherRow = mockActivity(999, {
+    title: 'Will the highest temperature in Miami be 90°F on June 20?',
+    slug: 'mock-weather-miami-90',
+    eventSlug: 'mock-weather-miami-90',
+  })
+  await mockPage.route('https://data-api.polymarket.com/activity**', async (route) => {
+    mockActivityCalls += 1
+    const url = new URL(route.request().url())
+    const rows = url.searchParams.get('limit') === '50' ? firstPreview : [weatherRow]
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(rows),
+    })
+  })
+  await mockPage.goto(`${APP_URL}/?address=${DEFAULT}`)
+  await mockPage
+    .waitForFunction(() => document.querySelectorAll('[data-testid="raw-row"]').length > 0, undefined, { timeout: 12000 })
+    .catch(() => {})
+  const autoFillState = await mockPage.evaluate(() => ({
+    selectedCategory: document.querySelector('[data-testid="filter-category"]')?.value ?? '',
+    rowCount: document.querySelectorAll('[data-testid="raw-row"]').length,
+    empty: !!document.querySelector('[data-testid="empty"]'),
+    firstCity: document.querySelector('[data-testid="raw-row"] [data-col="city"]')?.textContent?.trim() ?? '',
+    shown: document.querySelector('[data-testid="status"]')?.getAttribute('data-shown') ?? '',
+    total: document.querySelector('[data-testid="status"]')?.getAttribute('data-total') ?? '',
+  }))
+  ok(
+    'default Weather auto-loads past an empty preview',
+    mockActivityCalls >= 2 &&
+      autoFillState.selectedCategory === 'weather' &&
+      autoFillState.rowCount === 1 &&
+      autoFillState.firstCity === 'Miami' &&
+      !autoFillState.empty,
+    `calls=${mockActivityCalls}, rows=${autoFillState.rowCount}, shown=${autoFillState.shown}/${autoFillState.total}`,
+  )
+  await mockPage.close()
 
   // ---- 1. initial load via shareable ?address= param
   await page.goto(`${APP_URL}/?address=${DEFAULT}`)
@@ -188,10 +252,17 @@ async function runSweep(mode) {
   const categorySelect = page.locator('[data-testid="filter-category"]')
   await page.waitForFunction(
     () => [...document.querySelectorAll('[data-testid="filter-category"] option')].some((o) => o.value === 'weather'),
+    undefined,
     { timeout: 10000 },
   ).catch(() => {})
   const categoryValues = await categorySelect.locator('option').evaluateAll((options) =>
     options.map((option) => ({ value: option.value, label: option.textContent?.trim() ?? '' })),
+  )
+  const defaultCategory = await categorySelect.evaluate((select) => select.value)
+  ok(
+    'category defaults to Weather',
+    defaultCategory === 'weather',
+    `selected=${defaultCategory || 'all'}`,
   )
   await categorySelect.selectOption('weather').catch(() => {})
   await sleep(400)
@@ -204,6 +275,136 @@ async function runSweep(mode) {
     categoryRows.length > 0 && visibleCategories.length === 1 && visibleCategories[0] === 'weather',
     `options: ${categoryValues.map((option) => option.label).join(', ')}; visible: ${visibleCategories.join(',')}`,
   )
+
+  const controlSeparation = await page.evaluate(() => {
+    const filterRow = document.querySelector('[data-testid="filter-row"]')
+    const configRow = document.querySelector('[data-testid="config-row"]')
+    const typeControl = document.querySelector('[data-testid="filter-type"]')
+    const stickyControl = document.querySelector('[data-testid="sticky-summary"]')
+    const rect = (el) => {
+      const box = el?.getBoundingClientRect()
+      return box ? { top: box.top, bottom: box.bottom } : null
+    }
+    return {
+      filter: rect(filterRow),
+      config: rect(configRow),
+      typeInFilter: !!filterRow?.contains(typeControl),
+      stickyInConfig: !!configRow?.contains(stickyControl),
+    }
+  })
+  ok(
+    'filters are visually separate from table config',
+    !!controlSeparation.filter &&
+      !!controlSeparation.config &&
+      controlSeparation.config.top >= controlSeparation.filter.bottom - 1 &&
+      controlSeparation.typeInFilter &&
+      controlSeparation.stickyInConfig,
+    `filter bottom=${Math.round(controlSeparation.filter?.bottom ?? 0)}, config top=${Math.round(controlSeparation.config?.top ?? 0)}`,
+  )
+
+  // ---- sticky column selection
+  await page.locator('[data-testid="sticky-summary"]').click()
+  await page.locator('[data-testid="sticky-temp"]').check()
+  await page.locator('[data-testid="sticky-date"]').check()
+  await sleep(300)
+  await page.$eval('.table-container', (el) => {
+    el.scrollLeft = 220
+  })
+  await sleep(200)
+  const stickyMetrics = await page.evaluate(() => {
+    const columns = ['city', 'temp', 'date', 'side']
+    const read = (scope) =>
+      columns.map((col) => {
+        const el = document.querySelector(`${scope} [data-col="${col}"]`)
+        if (!el) return null
+        const rect = el.getBoundingClientRect()
+        return {
+          col,
+          left: Number.parseFloat(getComputedStyle(el).left),
+          sticky: el.classList.contains('raw-sticky-cell'),
+          width: rect.width,
+          x: rect.x,
+        }
+      }).filter(Boolean)
+    return {
+      summary: document.querySelector('[data-testid="sticky-summary"]')?.textContent?.trim() ?? '',
+      headers: read('[data-testid="raw-header"]'),
+      cells: read('[data-testid="raw-row"]'),
+    }
+  })
+  const headerByCol = new Map(stickyMetrics.headers.map((item) => [item.col, item]))
+  const cellByCol = new Map(stickyMetrics.cells.map((item) => [item.col, item]))
+  const stickyTriple = ['city', 'temp', 'date'].every((col) => headerByCol.get(col)?.sticky && cellByCol.get(col)?.sticky)
+  const sideUnsticky = !headerByCol.get('side')?.sticky && !cellByCol.get('side')?.sticky
+  const offsetsMatch = ['city', 'temp', 'date'].every((col) =>
+    Math.abs((headerByCol.get(col)?.left ?? 0) - (cellByCol.get(col)?.left ?? 0)) < 1,
+  )
+  const positionsMatch = ['city', 'temp', 'date'].every((col) =>
+    Math.abs((headerByCol.get(col)?.x ?? 0) - (cellByCol.get(col)?.x ?? 0)) < 1,
+  )
+  ok(
+    'sticky column picker pins selected columns',
+    stickyMetrics.summary.includes('City + Temp + Date') && stickyTriple && sideUnsticky && offsetsMatch && positionsMatch,
+    stickyMetrics.summary,
+  )
+
+  await page.locator('[data-testid="sticky-summary"]').click()
+  await page.locator('[data-testid="columns-summary"]').click()
+  await sleep(150)
+  const columnMenuState = await page.evaluate(() => {
+    const details = document.querySelector('[data-testid="columns-summary"]')?.closest('details')
+    const panel = document.querySelector('[data-testid="columns-menu"]')
+    const rect = panel?.getBoundingClientRect()
+    const hit = rect ? document.elementFromPoint(rect.left + 20, rect.top + 20) : null
+    return {
+      open: details?.hasAttribute('open') ?? false,
+      display: panel ? getComputedStyle(panel).display : '',
+      position: panel ? getComputedStyle(panel).position : '',
+      hitTestId: hit?.getAttribute('data-testid') ?? '',
+      hitText: hit?.textContent?.trim() ?? '',
+    }
+  })
+  ok(
+    'column visibility picker menu is visible and clickable',
+    columnMenuState.open &&
+      columnMenuState.display === 'grid' &&
+      columnMenuState.position === 'fixed' &&
+      columnMenuState.hitTestId.startsWith('column-'),
+    `${columnMenuState.position}/${columnMenuState.hitTestId || columnMenuState.hitText}`,
+  )
+  await page.locator('[data-testid="column-type"]').uncheck()
+  await page.locator('[data-testid="column-outcome"]').uncheck()
+  await sleep(300)
+  const visibilityMetrics = await page.evaluate(() => {
+    const hasColumn = (col) => ({
+      header: !!document.querySelector(`[data-testid="raw-header"] [data-col="${col}"]`),
+      cell: !!document.querySelector(`[data-testid="raw-row"] [data-col="${col}"]`),
+    })
+    return {
+      summary: document.querySelector('[data-testid="columns-summary"]')?.textContent?.trim() ?? '',
+      type: hasColumn('type'),
+      outcome: hasColumn('outcome'),
+      city: hasColumn('city'),
+      firstCellCol: document.querySelector('[data-testid="raw-row"] [role="cell"]')?.getAttribute('data-col') ?? '',
+    }
+  })
+  ok(
+    'column visibility picker hides selected columns',
+    visibilityMetrics.summary.includes('8/10') &&
+      !visibilityMetrics.type.header &&
+      !visibilityMetrics.type.cell &&
+      !visibilityMetrics.outcome.header &&
+      !visibilityMetrics.outcome.cell &&
+      visibilityMetrics.city.header &&
+      visibilityMetrics.city.cell &&
+      visibilityMetrics.firstCellCol === 'city',
+    visibilityMetrics.summary,
+  )
+  await page.locator('[data-testid="column-type"]').check()
+  await page.locator('[data-testid="column-outcome"]').check()
+  await sleep(300)
+  await page.locator('[data-testid="columns-summary"]').click()
+
   await categorySelect.selectOption('')
   await sleep(300)
 
@@ -263,7 +464,7 @@ async function runSweep(mode) {
   await scrollContainer(0)
 
   // ---- 5. type filter (select order: type, side, outcome)
-  const typeSelect = page.locator('select').nth(0)
+  const typeSelect = page.locator('[data-testid="filter-type"]')
   await typeSelect.selectOption('REDEEM')
   await waitForRows('Redeem')
   await sleep(400)
@@ -287,7 +488,7 @@ async function runSweep(mode) {
   await typeSelect.selectOption('')
   await waitForRows()
   await sleep(600)
-  const sideSelect = page.locator('select').nth(1)
+  const sideSelect = page.locator('[data-testid="filter-side"]')
   await sideSelect.selectOption('SELL')
   await waitForRows()
   await sleep(900)
@@ -302,7 +503,7 @@ async function runSweep(mode) {
   await sideSelect.selectOption('')
   await waitForRows()
   await sleep(800)
-  const outcomeSelect = page.locator('select').nth(2)
+  const outcomeSelect = page.locator('[data-testid="filter-outcome"]')
   await outcomeSelect.selectOption('No')
   await sleep(800)
   rows = await visibleRows()

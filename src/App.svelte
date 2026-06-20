@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import {
     activityKey,
     fetchActivityPage,
@@ -9,9 +9,18 @@
     type Activity,
     type ActivityType,
     type Cursor,
-    type EventMetadata,
     type Side,
   } from './api'
+  import {
+    areCategoriesSettled,
+    categoryForRow,
+    categoryFromActivity,
+    categoryFromMetadata,
+    DEFAULT_CATEGORY,
+    filterRows,
+    getCategoryOptions,
+    type CategoryOption,
+  } from './category'
   import { formatTimeShort, shortHash } from './format'
 
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
@@ -26,76 +35,31 @@
     { value: 'MERGE', label: 'Merge' },
     { value: 'REWARD', label: 'Reward' },
   ]
-  const CATEGORY_LABELS: Record<string, string> = {
-    weather: 'Weather',
-    politics: 'Politics',
-    sports: 'Sports',
-    crypto: 'Crypto',
-    economy: 'Economy',
-    finance: 'Finance',
-    business: 'Business',
-    culture: 'Culture',
-    entertainment: 'Entertainment',
-    technology: 'Technology',
-    science: 'Science',
-    news: 'News',
-    world: 'World',
-    'us-current-affairs': 'US Current Affairs',
-    'international-affairs': 'International Affairs',
-  }
-  const CATEGORY_PRIORITY = [
-    'weather',
-    'politics',
-    'sports',
-    'crypto',
-    'economy',
-    'finance',
-    'business',
-    'culture',
-    'entertainment',
-    'technology',
-    'science',
-    'news',
-    'world',
-    'us-current-affairs',
-    'international-affairs',
-  ]
-  const CATEGORY_ALIASES: Record<string, keyof typeof CATEGORY_LABELS> = {
-    elections: 'politics',
-    'us-election': 'politics',
-    'usa-election': 'politics',
-    'us-presidential-election': 'politics',
-    '2024-presidential-election': 'politics',
-    nba: 'sports',
-    nfl: 'sports',
-    mlb: 'sports',
-    nhl: 'sports',
-    ufc: 'sports',
-    soccer: 'sports',
-    football: 'sports',
-    tennis: 'sports',
-    golf: 'sports',
-    cricket: 'sports',
-    bitcoin: 'crypto',
-    ethereum: 'crypto',
-    solana: 'crypto',
-    altcoins: 'crypto',
-  }
-  const IGNORED_CATEGORY_TAGS = new Set(['all', 'hide-from-new', 'recurring'])
   const CATEGORY_FETCH_CONCURRENCY = 6
+  const AUTO_FILL_MAX_PAGES = 4
+  const STICKY_STORAGE_KEY = 'activity-sticky-columns'
+  const VISIBLE_STORAGE_KEY = 'activity-visible-columns'
+  const COLUMN_DEFS = [
+    { id: 'city', label: 'City' },
+    { id: 'temp', label: 'Temp' },
+    { id: 'date', label: 'Date' },
+    { id: 'side', label: 'Side' },
+    { id: 'type', label: 'Type' },
+    { id: 'outcome', label: 'Outcome' },
+    { id: 'price', label: 'Price' },
+    { id: 'amount', label: 'Amount pUSD' },
+    { id: 'time', label: 'Time' },
+    { id: 'tx', label: 'Tx' },
+  ] as const
 
-  type CategoryOption = { value: string; label: string }
+  type ColumnId = (typeof COLUMN_DEFS)[number]['id']
+
+  const ALL_COLUMN_IDS = COLUMN_DEFS.map((column) => column.id)
 
   const txHref = (hash: string) => `https://polygonscan.com/tx/${hash}`
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
   const capitalize = (s: string) => (s ? s[0] + s.slice(1).toLowerCase() : s)
   const displayType = (value: ActivityType) => (value === 'CONVERSION' ? 'Convert' : capitalize(value))
-  const titleCase = (value: string) =>
-    value
-      .replace(/[-_]+/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .replace(/\b\w/g, (char) => char.toUpperCase())
   const normalizeDate = (date: string) => date.replace(/\bJune\b/, 'Jun').replace(/\bMay\b/, 'May')
   const compactWeatherTitle = (title: string): { city: string; temp: string; date: string; low: boolean } | null => {
     const weather = title.match(
@@ -142,13 +106,17 @@
   let type: ActivityType | '' = ''
   let side: Side | '' = ''
   let outcome = ''
-  let category = ''
+  let category = DEFAULT_CATEGORY
+  let stickyColumns: ColumnId[] = ['city']
+  let visibleColumns: ColumnId[] = ALL_COLUMN_IDS
+  let stickyOffsets: Partial<Record<ColumnId, number>> = {}
   let pages: Activity[][] = []
   let eventCategories: Record<string, CategoryOption | null> = {}
   let nextCursor: Cursor | undefined = { offset: 0 }
   let loading = false
   let fetching = false
   let fetchingNextPage = false
+  let autoFilling = false
   let error: Error | null = null
   let pusdBalance: number | null = null
   let pusdBalanceFetching = false
@@ -164,43 +132,85 @@
   let categoryController: AbortController | null = null
   let balanceAddress = ''
   let parentRef: HTMLDivElement
+  let tableRef: HTMLTableElement
+  let measureRaf: number | undefined
   let pendingCategorySlugs = new Set<string>()
+  let autoFillKey = ''
+  let autoFillAttempts = 0
 
   $: validAddress = ADDRESS_RE.test(address)
   $: allRows = dedupeRows(pages)
   $: outcomes = [...new Set(allRows.map((row) => row.outcome).filter(Boolean))].sort()
   $: categoryOptions = getCategoryOptions(allRows, eventCategories)
   $: rows = filterRows(allRows, outcome, category, eventCategories)
+  $: clientFilterActive = Boolean(outcome || category)
+  $: categoriesSettled = areCategoriesSettled(allRows, eventCategories)
+  $: currentAutoFillKey = `${requestSeq}|${outcome}|${category}`
+  $: if (currentAutoFillKey !== autoFillKey) {
+    autoFillKey = currentAutoFillKey
+    autoFillAttempts = 0
+  }
+  $: visibleKey = visibleColumns.join('|')
+  $: visibleByColumn = getVisibleByColumn(visibleColumns)
+  $: visibleColumnDefs = COLUMN_DEFS.filter((column) => visibleByColumn[column.id])
+  $: firstVisibleColumn = visibleColumnDefs[0]?.id
+  $: activeStickyColumns = stickyColumns.filter((column) => visibleByColumn[column])
+  $: stickyKey = activeStickyColumns.join('|')
+  $: stickyByColumn = getStickyByColumn(activeStickyColumns)
+  $: stickyClassByColumn = getStickyClassByColumn(stickyByColumn)
+  $: stickyStyleByColumn = getStickyStyleByColumn(stickyByColumn, stickyOffsets)
+  $: stickySummary = activeStickyColumns.length === 0
+    ? 'None Sticky'
+    : `Sticky: ${activeStickyColumns.map((column) => COLUMN_DEFS.find((def) => def.id === column)?.label ?? column).join(' + ')}`
+  $: visibleSummary = visibleColumns.length === COLUMN_DEFS.length
+    ? 'Cols: All'
+    : `Cols: ${visibleColumns.length}/${COLUMN_DEFS.length}`
+  $: {
+    rows.length
+    visibleKey
+    stickyKey
+    if (!loading) void scheduleStickyMeasure()
+  }
   $: statusText = lastRefreshAt === null
     ? 'REFRESHING'
     : `${Math.max(0, Math.floor((now - lastRefreshAt) / 1000))}S SINCE REFRESH`
   $: statusCursor = nextCursor ? 'more' : validAddress ? 'end' : ''
-  $: empty = !loading && rows.length === 0
+  $: filteredRowsPending = clientFilterActive && allRows.length > 0 && rows.length === 0 && (!categoriesSettled || autoFilling)
+  $: empty = !loading && !filteredRowsPending && rows.length === 0
   $: profile = getProfile(allRows)
   $: void hydrateEventCategories(allRows)
+  $: void maybeAutoFillFilteredRows(
+    currentAutoFillKey,
+    validAddress,
+    clientFilterActive,
+    loading,
+    fetching,
+    autoFilling,
+    allRows.length,
+    rows.length,
+    nextCursor,
+  )
 
   onMount(() => {
+    visibleColumns = readVisibleColumns()
+    stickyColumns = readStickyColumns().filter((column) => visibleColumns.includes(column))
     clockTimer = window.setInterval(() => {
       now = Date.now()
     }, 1000)
     return () => {
-      activeController?.abort()
-      refreshController?.abort()
-      balanceController?.abort()
-      categoryController?.abort()
-      if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
-      if (clockTimer !== undefined) window.clearInterval(clockTimer)
+      cleanupRuntime()
     }
   })
 
-  onDestroy(() => {
+  function cleanupRuntime() {
     activeController?.abort()
     refreshController?.abort()
     balanceController?.abort()
     categoryController?.abort()
+    if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
     if (refreshTimer !== undefined) window.clearInterval(refreshTimer)
     if (clockTimer !== undefined) window.clearInterval(clockTimer)
-  })
+  }
 
   $: void watchQueryKey(address, type, side)
 
@@ -228,11 +238,9 @@
   }
 
   function getProfile(sourceRows: Activity[]) {
-    const first = sourceRows[0]
     const named = sourceRows.find((row) => row.name || row.pseudonym)
     return {
       name: named?.name || named?.pseudonym || 'Anonymous',
-      image: (first as unknown as { profileImage?: string })?.profileImage,
     }
   }
 
@@ -240,64 +248,138 @@
     return compactWeatherTitle(row.title)?.city ?? row.title
   }
 
-  function normalizeCategorySlug(value: string) {
-    return value.trim().toLowerCase().replace(/[_\s]+/g, '-')
+  function readStickyColumns(): ColumnId[] {
+    return readColumnList(STICKY_STORAGE_KEY, ['city'])
   }
 
-  function categoryOption(value: string): CategoryOption {
-    const normalized = normalizeCategorySlug(value)
-    const alias = CATEGORY_ALIASES[normalized] ?? normalized
-    return { value: alias, label: CATEGORY_LABELS[alias] ?? titleCase(alias) }
+  function readVisibleColumns(): ColumnId[] {
+    return readColumnList(VISIBLE_STORAGE_KEY, ALL_COLUMN_IDS, true)
   }
 
-  function categoryFromMetadata(metadata: EventMetadata): CategoryOption | null {
-    const tags = metadata.tags
-      .map((tag) => ({ label: tag.label, slug: normalizeCategorySlug(tag.slug) }))
-      .filter((tag) => tag.slug && !IGNORED_CATEGORY_TAGS.has(tag.slug))
-    const tagSlugs = new Set(tags.map((tag) => CATEGORY_ALIASES[tag.slug] ?? tag.slug))
-    for (const value of CATEGORY_PRIORITY) {
-      if (tagSlugs.has(value)) return categoryOption(value)
+  function readColumnList(key: string, fallback: ColumnId[], requireOne = false) {
+    try {
+      const raw = localStorage.getItem(key)
+      if (!raw) return fallback
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) return fallback
+      const valid = parsed.filter((value): value is ColumnId => ALL_COLUMN_IDS.includes(value as ColumnId))
+      return valid.length > 0 || !requireOne ? orderColumns(valid) : fallback
+    } catch {
+      return fallback
     }
-    if (metadata.category) return categoryOption(metadata.category)
-    const fallback = tags[0]
-    return fallback ? categoryOption(fallback.slug || fallback.label) : null
   }
 
-  function categoryFromActivity(row: Activity): CategoryOption | null {
-    const text = `${row.eventSlug} ${row.slug} ${row.title}`.toLowerCase()
-    if (/\btemperature\b|\bweather\b/.test(text)) return categoryOption('weather')
-    if (/\belection\b|\bmayoral\b|\bpresidential\b|\bsenate\b|\bcongress\b|\btrump\b|\bbiden\b|\bpolitics\b/.test(text)) {
-      return categoryOption('politics')
-    }
-    if (/\bbitcoin\b|\bbtc\b|\beth\b|\bethereum\b|\bsol\b|\bsolana\b|\bcrypto\b/.test(text)) return categoryOption('crypto')
-    if (/\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|\bufc\b|\bsoccer\b|\bfootball\b|\btennis\b|\bgolf\b|\bcricket\b/.test(text)) {
-      return categoryOption('sports')
-    }
-    if (/\bgdp\b|\bcpi\b|\binflation\b|\bfed\b|\brate-cut\b|\beconomy\b|\brecession\b/.test(text)) return categoryOption('economy')
-    return null
+  function orderColumns(columns: ColumnId[]) {
+    const selected = new Set(columns)
+    return ALL_COLUMN_IDS.filter((id) => selected.has(id))
   }
 
-  function getCategoryOptions(sourceRows: Activity[], sourceCategories: Record<string, CategoryOption | null>) {
-    const byValue = new Map<string, string>()
-    for (const row of sourceRows) {
-      const option = sourceCategories[row.eventSlug]
-      if (option) byValue.set(option.value, option.label)
-    }
-    return [...byValue.entries()]
-      .map(([value, label]) => ({ value, label }))
-      .sort((a, b) => a.label.localeCompare(b.label))
+  function toggleStickyColumn(column: ColumnId) {
+    const selected = new Set(stickyColumns)
+    if (selected.has(column)) selected.delete(column)
+    else selected.add(column)
+    const next = orderColumns([...selected])
+    stickyColumns = next
+    localStorage.setItem(STICKY_STORAGE_KEY, JSON.stringify(next))
+    void scheduleStickyMeasure()
   }
 
-  function filterRows(
-    sourceRows: Activity[],
-    selectedOutcome: string,
-    selectedCategory: string,
-    sourceCategories: Record<string, CategoryOption | null>,
+  function toggleVisibleColumn(column: ColumnId) {
+    const selected = new Set(visibleColumns)
+    if (selected.has(column)) {
+      if (selected.size === 1) return
+      selected.delete(column)
+    } else {
+      selected.add(column)
+    }
+
+    const nextVisible = orderColumns([...selected])
+    const nextSticky = stickyColumns.filter((id) => nextVisible.includes(id))
+    visibleColumns = nextVisible
+    stickyColumns = nextSticky
+    localStorage.setItem(VISIBLE_STORAGE_KEY, JSON.stringify(nextVisible))
+    localStorage.setItem(STICKY_STORAGE_KEY, JSON.stringify(nextSticky))
+    void scheduleStickyMeasure()
+  }
+
+  function getVisibleByColumn(columns: ColumnId[]) {
+    const selected = new Set(columns)
+    return COLUMN_DEFS.reduce(
+      (out, column) => {
+        out[column.id] = selected.has(column.id)
+        return out
+      },
+      {} as Record<ColumnId, boolean>,
+    )
+  }
+
+  function getStickyByColumn(columns: ColumnId[]) {
+    const selected = new Set(columns)
+    return COLUMN_DEFS.reduce(
+      (out, column) => {
+        out[column.id] = selected.has(column.id)
+        return out
+      },
+      {} as Record<ColumnId, boolean>,
+    )
+  }
+
+  function getStickyClassByColumn(sourceStickyByColumn: Record<ColumnId, boolean>) {
+    return COLUMN_DEFS.reduce(
+      (out, column) => {
+        out[column.id] = sourceStickyByColumn[column.id] ? 'raw-sticky-cell' : ''
+        return out
+      },
+      {} as Record<ColumnId, string>,
+    )
+  }
+
+  function getStickyStyleByColumn(
+    sourceStickyByColumn: Record<ColumnId, boolean>,
+    sourceStickyOffsets: Partial<Record<ColumnId, number>>,
   ) {
-    return sourceRows.filter((row) => {
-      if (selectedOutcome && row.outcome !== selectedOutcome) return false
-      if (selectedCategory && sourceCategories[row.eventSlug]?.value !== selectedCategory) return false
-      return true
+    return COLUMN_DEFS.reduce(
+      (out, column) => {
+        out[column.id] = sourceStickyByColumn[column.id] ? `left: ${sourceStickyOffsets[column.id] ?? 0}px` : ''
+        return out
+      },
+      {} as Record<ColumnId, string>,
+    )
+  }
+
+  async function scheduleStickyMeasure() {
+    if (loading || typeof window === 'undefined') return
+    if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
+    await tick()
+    measureRaf = window.requestAnimationFrame(() => {
+      measureRaf = undefined
+      measureStickyOffsets()
+    })
+  }
+
+  function measureStickyOffsets() {
+    if (!tableRef) return
+    let left = 0
+    const next: Partial<Record<ColumnId, number>> = {}
+    for (const column of COLUMN_DEFS) {
+      if (!stickyByColumn[column.id]) continue
+      next[column.id] = left
+      const header = tableRef.querySelector<HTMLElement>(`[data-col="${column.id}"]`)
+      left += header?.getBoundingClientRect().width ?? 0
+    }
+    stickyOffsets = next
+  }
+
+  function handleColumnMenuToggle(event: Event) {
+    const details = event.currentTarget as HTMLDetailsElement
+    const panel = details.querySelector<HTMLElement>('.column-menu-panel')
+    if (!panel || typeof window === 'undefined') return
+    window.requestAnimationFrame(() => {
+      const detailsRect = details.getBoundingClientRect()
+      const panelRect = panel.getBoundingClientRect()
+      const left = Math.max(4, Math.min(detailsRect.left, window.innerWidth - panelRect.width - 4))
+      panel.style.setProperty('--column-menu-left', `${left}px`)
+      panel.style.setProperty('--column-menu-top', `${detailsRect.bottom}px`)
     })
   }
 
@@ -346,6 +428,40 @@
     await Promise.all(Array.from({ length: Math.min(CATEGORY_FETCH_CONCURRENCY, slugs.length) }, worker))
   }
 
+  async function maybeAutoFillFilteredRows(
+    key: string,
+    isValidAddress: boolean,
+    isClientFilterActive: boolean,
+    isLoading: boolean,
+    isFetching: boolean,
+    isAutoFilling: boolean,
+    loadedCount: number,
+    visibleCount: number,
+    cursor: Cursor | undefined,
+  ) {
+    if (
+      !isValidAddress ||
+      !isClientFilterActive ||
+      isLoading ||
+      isFetching ||
+      isAutoFilling ||
+      loadedCount === 0 ||
+      visibleCount > 0 ||
+      !cursor ||
+      autoFillAttempts >= AUTO_FILL_MAX_PAGES
+    ) {
+      return
+    }
+
+    autoFillAttempts += 1
+    autoFilling = true
+    try {
+      await fetchNext(false)
+    } finally {
+      if (key === autoFillKey) autoFilling = false
+    }
+  }
+
   async function resetAndFetch() {
     activeController?.abort()
     refreshController?.abort()
@@ -360,6 +476,8 @@
     error = null
     fetching = false
     fetchingNextPage = false
+    autoFilling = false
+    autoFillAttempts = 0
     showTop = false
     if (parentRef) parentRef.scrollTop = 0
     if (!validAddress) {
@@ -559,7 +677,7 @@
       </div>
 
       {#if validAddress}
-        <div class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div data-testid="filter-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
             <select bind:value={type} data-testid="filter-type" aria-label="Activity type" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
             {#each TYPE_OPTIONS as option}
@@ -591,6 +709,56 @@
             </select>
           </label>
         </div>
+
+        <div data-testid="config-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <details class="column-menu relative flex shrink-0 border-r border-hairline" on:toggle={handleColumnMenuToggle}>
+            <summary
+              data-testid="sticky-summary"
+              class="ui-control flex min-w-36 cursor-pointer list-none items-center bg-card pr-3 text-foreground hover:bg-secondary [&::-webkit-details-marker]:hidden"
+            >
+              {stickySummary}
+            </summary>
+            <div class="column-menu-panel z-50 grid min-w-48 border border-hairline bg-card shadow-lg" data-testid="sticky-menu">
+              {#each COLUMN_DEFS as column}
+                <label class={`flex cursor-pointer items-center gap-2 border-b border-hairline px-3 py-2 font-mono text-[11px] uppercase leading-4 last:border-b-0 hover:bg-secondary ${visibleByColumn[column.id] ? 'text-foreground' : 'text-[var(--faint)]'}`}>
+                  <input
+                    type="checkbox"
+                    class="accent-primary"
+                    checked={stickyByColumn[column.id]}
+                    disabled={!visibleByColumn[column.id]}
+                    data-testid={`sticky-${column.id}`}
+                    on:change={() => toggleStickyColumn(column.id)}
+                  />
+                  <span>{column.label}</span>
+                </label>
+              {/each}
+            </div>
+          </details>
+          <details class="column-menu relative flex shrink-0 border-r border-hairline" on:toggle={handleColumnMenuToggle}>
+            <summary
+              data-testid="columns-summary"
+              class="ui-control flex min-w-28 cursor-pointer list-none items-center bg-card pr-3 text-foreground hover:bg-secondary [&::-webkit-details-marker]:hidden"
+            >
+              {visibleSummary}
+            </summary>
+            <div class="column-menu-panel z-50 grid min-w-48 border border-hairline bg-card shadow-lg" data-testid="columns-menu">
+              {#each COLUMN_DEFS as column}
+                {@const isLastVisible = visibleColumns.length === 1 && visibleByColumn[column.id]}
+                <label class={`flex cursor-pointer items-center gap-2 border-b border-hairline px-3 py-2 font-mono text-[11px] uppercase leading-4 text-foreground last:border-b-0 hover:bg-secondary ${isLastVisible ? 'opacity-50' : ''}`}>
+                  <input
+                    type="checkbox"
+                    class="accent-primary"
+                    checked={visibleByColumn[column.id]}
+                    disabled={isLastVisible}
+                    data-testid={`column-${column.id}`}
+                    on:change={() => toggleVisibleColumn(column.id)}
+                  />
+                  <span>{column.label}</span>
+                </label>
+              {/each}
+            </div>
+          </details>
+        </div>
       {/if}
 
       {#if address !== '' && !validAddress}
@@ -617,8 +785,8 @@
         on:scroll={handleScroll}
         class="table-container h-full min-h-0 overflow-y-auto overflow-x-auto overscroll-contain"
       >
-        {#if loading}
-          <table class="raw-table" data-testid="raw-loading">
+        {#if loading || filteredRowsPending}
+          <table bind:this={tableRef} class="raw-table" data-testid="raw-loading">
             {@render RawHeader()}
             <tbody>
               {#each Array(18) as _}
@@ -639,72 +807,94 @@
           </div>
         {/if}
 
-        {#if !loading && !empty}
-          <table class="raw-table" data-testid="raw-table">
+        {#if !loading && rows.length > 0}
+          <table bind:this={tableRef} class="raw-table" data-testid="raw-table">
             {@render RawHeader()}
             <tbody>
               {#each rows as row, index (activityKey(row))}
                 {@const titleParts = compactWeatherTitle(row.title)}
                 <tr
                   data-testid="raw-row"
-                  data-category={eventCategories[row.eventSlug]?.value ?? ''}
+                  data-category={categoryForRow(row, eventCategories)?.value ?? ''}
                   data-index={index}
                   class="raw-row group"
                   style={`--row-accent: ${rawEventAccent(row.eventSlug)}`}
                 >
-                  <td
-                    role="cell"
-                    class="raw-cell raw-sticky-city font-mono text-foreground"
-                    title={row.title}
-                  >
-                    {cityLabel(row)}
-                  </td>
-                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={row.title}>
-                    {titleParts ? `${titleParts.temp}${titleParts.low ? ' low' : ''}` : '--'}
-                  </td>
-                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-[var(--secondary-text)]" title={row.title}>
-                    {titleParts?.date ?? '--'}
-                  </td>
-                  <td role="cell" class={`raw-cell font-mono font-semibold ${sideClass(row.side)}`} title={capitalize(row.side)}>
-                    {capitalize(row.side)}
-                  </td>
-                  <td role="cell" data-testid="cell-type" class="raw-cell font-mono text-foreground" title={displayType(row.type)}>
-                    {displayType(row.type)}
-                  </td>
-                  <td role="cell" class={`raw-cell font-mono font-semibold ${outcomeClass(row.outcome)}`} title={row.outcome}>
-                    {row.outcome}
-                  </td>
-                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(row.price)}>
-                    {#if row.type === 'TRADE' && row.price > 0}
-                      {@render DecimalNumber(row.price, 3)}
-                    {:else}
-                      <span class="text-[var(--faint)]">--</span>
-                    {/if}
-                  </td>
-                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(row.usdcSize)}>
-                    {@render DecimalNumber(row.usdcSize, 5)}
-                  </td>
-                  <td role="cell" class="raw-cell justify-end font-mono text-right tabular-nums text-foreground" title={String(row.timestamp)}>
-                    {formatTimeShort(row.timestamp)}
-                  </td>
-                  <td role="cell" class="raw-cell justify-end font-mono text-right text-foreground" title={row.transactionHash}>
-                    <a
-                      href={txHref(row.transactionHash)}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={row.transactionHash}
-                      class="raw-link-anchor text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
+                  {#if visibleByColumn.city}
+                    <td
+                      role="cell"
+                      data-col="city"
+                      class={`raw-cell font-mono text-foreground ${firstVisibleColumn === 'city' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.city}`}
+                      style={stickyStyleByColumn.city}
+                      title={row.title}
                     >
-                      LINK
-                    </a>
-                  </td>
+                      {cityLabel(row)}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.temp}
+                    <td role="cell" data-col="temp" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'temp' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.temp}`} style={stickyStyleByColumn.temp} title={row.title}>
+                      {titleParts ? `${titleParts.temp}${titleParts.low ? ' low' : ''}` : '--'}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.date}
+                    <td role="cell" data-col="date" class={`raw-cell justify-end font-mono text-right tabular-nums text-[var(--secondary-text)] ${firstVisibleColumn === 'date' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.date}`} style={stickyStyleByColumn.date} title={row.title}>
+                      {titleParts?.date ?? '--'}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.side}
+                    <td role="cell" data-col="side" class={`raw-cell font-mono font-semibold ${sideClass(row.side)} ${firstVisibleColumn === 'side' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.side}`} style={stickyStyleByColumn.side} title={capitalize(row.side)}>
+                      {capitalize(row.side)}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.type}
+                    <td role="cell" data-col="type" data-testid="cell-type" class={`raw-cell font-mono text-foreground ${firstVisibleColumn === 'type' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.type}`} style={stickyStyleByColumn.type} title={displayType(row.type)}>
+                      {displayType(row.type)}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.outcome}
+                    <td role="cell" data-col="outcome" class={`raw-cell font-mono font-semibold ${outcomeClass(row.outcome)} ${firstVisibleColumn === 'outcome' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.outcome}`} style={stickyStyleByColumn.outcome} title={row.outcome}>
+                      {row.outcome}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.price}
+                    <td role="cell" data-col="price" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'price' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.price}`} style={stickyStyleByColumn.price} title={String(row.price)}>
+                      {#if row.type === 'TRADE' && row.price > 0}
+                        {@render DecimalNumber(row.price, 3)}
+                      {:else}
+                        <span class="text-[var(--faint)]">--</span>
+                      {/if}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.amount}
+                    <td role="cell" data-col="amount" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'amount' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.amount}`} style={stickyStyleByColumn.amount} title={String(row.usdcSize)}>
+                      {@render DecimalNumber(row.usdcSize, 5)}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.time}
+                    <td role="cell" data-col="time" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'time' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.time}`} style={stickyStyleByColumn.time} title={String(row.timestamp)}>
+                      {formatTimeShort(row.timestamp)}
+                    </td>
+                  {/if}
+                  {#if visibleByColumn.tx}
+                    <td role="cell" data-col="tx" class={`raw-cell justify-end font-mono text-right text-foreground ${firstVisibleColumn === 'tx' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.tx}`} style={stickyStyleByColumn.tx} title={row.transactionHash}>
+                      <a
+                        href={txHref(row.transactionHash)}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={row.transactionHash}
+                        class="raw-link-anchor text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
+                      >
+                        LINK
+                      </a>
+                    </td>
+                  {/if}
                 </tr>
               {/each}
             </tbody>
           </table>
         {/if}
 
-        {#if !loading && validAddress && nextCursor}
+        {#if !loading && !filteredRowsPending && validAddress && nextCursor}
           <div class="ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground">
             <button
               type="button"
@@ -736,16 +926,36 @@
 {#snippet RawHeader()}
   <thead class="raw-head" data-testid="raw-header">
     <tr>
-      <th role="columnheader" class="raw-sticky-city">City</th>
-      <th role="columnheader" class="text-right tabular-nums">Temp</th>
-      <th role="columnheader" class="text-right tabular-nums">Date</th>
-      <th role="columnheader">Side</th>
-      <th role="columnheader">Type</th>
-      <th role="columnheader">Outcome</th>
-      <th role="columnheader" class="text-right tabular-nums">Price</th>
-      <th role="columnheader" class="text-right tabular-nums">Amount pUSD</th>
-      <th role="columnheader" class="text-right tabular-nums">Time</th>
-      <th role="columnheader" class="text-right tabular-nums">Tx</th>
+      {#if visibleByColumn.city}
+        <th role="columnheader" data-col="city" class={stickyClassByColumn.city} style={stickyStyleByColumn.city}>City</th>
+      {/if}
+      {#if visibleByColumn.temp}
+        <th role="columnheader" data-col="temp" class={`text-right tabular-nums ${stickyClassByColumn.temp}`} style={stickyStyleByColumn.temp}>Temp</th>
+      {/if}
+      {#if visibleByColumn.date}
+        <th role="columnheader" data-col="date" class={`text-right tabular-nums ${stickyClassByColumn.date}`} style={stickyStyleByColumn.date}>Date</th>
+      {/if}
+      {#if visibleByColumn.side}
+        <th role="columnheader" data-col="side" class={stickyClassByColumn.side} style={stickyStyleByColumn.side}>Side</th>
+      {/if}
+      {#if visibleByColumn.type}
+        <th role="columnheader" data-col="type" class={stickyClassByColumn.type} style={stickyStyleByColumn.type}>Type</th>
+      {/if}
+      {#if visibleByColumn.outcome}
+        <th role="columnheader" data-col="outcome" class={stickyClassByColumn.outcome} style={stickyStyleByColumn.outcome}>Outcome</th>
+      {/if}
+      {#if visibleByColumn.price}
+        <th role="columnheader" data-col="price" class={`text-right tabular-nums ${stickyClassByColumn.price}`} style={stickyStyleByColumn.price}>Price</th>
+      {/if}
+      {#if visibleByColumn.amount}
+        <th role="columnheader" data-col="amount" class={`text-right tabular-nums ${stickyClassByColumn.amount}`} style={stickyStyleByColumn.amount}>Amount pUSD</th>
+      {/if}
+      {#if visibleByColumn.time}
+        <th role="columnheader" data-col="time" class={`text-right tabular-nums ${stickyClassByColumn.time}`} style={stickyStyleByColumn.time}>Time</th>
+      {/if}
+      {#if visibleByColumn.tx}
+        <th role="columnheader" data-col="tx" class={`text-right tabular-nums ${stickyClassByColumn.tx}`} style={stickyStyleByColumn.tx}>Tx</th>
+      {/if}
     </tr>
   </thead>
 {/snippet}
@@ -761,8 +971,8 @@
 
 {#snippet RawSkeleton()}
   <tr class="raw-row">
-    {#each Array(10) as _, i}
-      <td class="raw-cell {i === 0 ? 'raw-sticky-city' : ''}">
+    {#each visibleColumnDefs as column}
+      <td data-col={column.id} class={`raw-cell ${column.id === firstVisibleColumn ? 'raw-accent-cell' : ''} ${stickyClassByColumn[column.id]}`} style={stickyStyleByColumn[column.id]}>
         <span class="h-3 w-14 animate-pulse rounded-md bg-muted"></span>
       </td>
     {/each}
