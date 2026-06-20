@@ -22,13 +22,15 @@
   import {
     areCategoriesSettled,
     categoryForRow,
-    categoryFromActivity,
-    categoryFromMetadata,
     DEFAULT_CATEGORY,
     filterRows,
     getCategoryOptions,
-    type CategoryOption,
   } from './category'
+  import {
+    createCategorySession,
+    createInitialCategorySessionState,
+    type CategorySessionState,
+  } from './categorySession'
   import {
     defaultColumnState,
     getColumnLayout,
@@ -65,8 +67,6 @@
     { value: 'MERGE', label: 'Merge' },
     { value: 'REWARD', label: 'Reward' },
   ]
-  const CATEGORY_FETCH_CONCURRENCY = 6
-
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
 
   let address = addressFromUrl()
@@ -78,23 +78,23 @@
   let activityState: ActivitySessionState = createInitialActivitySessionState()
   let balanceSession: ReturnType<typeof createPusdBalanceSession> | null = null
   let pusdBalanceState: PusdBalanceState = createInitialPusdBalanceState()
+  let categorySession: ReturnType<typeof createCategorySession> | null = null
+  let categoryState: CategorySessionState = createInitialCategorySessionState()
   let columnState: ColumnState = defaultColumnState()
   let stickyOffsets: Partial<Record<ColumnId, number>> = {}
-  let eventCategories: Record<string, CategoryOption | null> = {}
   let showTop = false
   let uiQueryKey = ''
   let now = Date.now()
   let clockTimer: number | undefined
-  let categoryController: AbortController | null = null
   let parentRef: HTMLDivElement
   let tableRef: HTMLTableElement
   let measureRaf: number | undefined
-  let pendingCategorySlugs = new Set<string>()
   let autoFillKey = ''
 
   $: validAddress = ADDRESS_RE.test(address)
   $: allRows = activityState.rows
   $: outcomes = [...new Set(allRows.map((row) => row.outcome).filter(Boolean))].sort()
+  $: eventCategories = categoryState.categories
   $: categoryOptions = getCategoryOptions(allRows, eventCategories)
   $: rows = filterRows(allRows, outcome, category, eventCategories)
   $: clientFilterActive = Boolean(outcome || category)
@@ -121,7 +121,7 @@
   $: filteredRowsPending = clientFilterActive && allRows.length > 0 && rows.length === 0 && (!categoriesSettled || activityState.autoFilling)
   $: empty = !activityState.loading && !filteredRowsPending && rows.length === 0
   $: profile = getProfile(allRows)
-  $: void hydrateEventCategories(allRows)
+  $: categorySession?.hydrate(allRows)
   $: if (activitySession) {
     const nextUiQueryKey = `${address.toLowerCase()}|${type}|${side}|${validAddress}`
     if (nextUiQueryKey !== uiQueryKey) {
@@ -149,8 +149,15 @@
         pusdBalanceState = next
       },
     })
+    categorySession = createCategorySession({
+      fetchEventMetadata,
+      onChange: (next) => {
+        categoryState = next
+      },
+    })
     activitySession.setQuery({ address, type, side, validAddress })
     balanceSession.setAddress(address, validAddress)
+    categorySession.hydrate(allRows)
     clockTimer = window.setInterval(() => {
       now = Date.now()
     }, 1000)
@@ -162,7 +169,7 @@
   function cleanupRuntime() {
     activitySession?.dispose()
     balanceSession?.dispose()
-    categoryController?.abort()
+    categorySession?.dispose()
     if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
     if (clockTimer !== undefined) window.clearInterval(clockTimer)
   }
@@ -211,51 +218,6 @@
       panel.style.setProperty('--column-menu-left', `${left}px`)
       panel.style.setProperty('--column-menu-top', `${detailsRect.bottom}px`)
     })
-  }
-
-  function hydrateEventCategories(sourceRows: Activity[]) {
-    const nextInferred: Record<string, CategoryOption> = {}
-    const rowsBySlug = new Map<string, Activity>()
-    for (const row of sourceRows) {
-      if (!row.eventSlug || row.eventSlug in eventCategories || pendingCategorySlugs.has(row.eventSlug)) continue
-      if (!rowsBySlug.has(row.eventSlug)) rowsBySlug.set(row.eventSlug, row)
-    }
-
-    const missing: string[] = []
-    for (const [slug, row] of rowsBySlug) {
-      const inferred = categoryFromActivity(row)
-      if (inferred) nextInferred[slug] = inferred
-      else missing.push(slug)
-    }
-
-    if (Object.keys(nextInferred).length > 0) {
-      eventCategories = { ...eventCategories, ...nextInferred }
-    }
-    if (missing.length === 0) return
-    for (const slug of missing) pendingCategorySlugs.add(slug)
-    if (!categoryController || categoryController.signal.aborted) categoryController = new AbortController()
-    void fetchEventCategories(missing, categoryController.signal)
-  }
-
-  async function fetchEventCategories(slugs: string[], signal: AbortSignal) {
-    let index = 0
-    async function worker() {
-      while (index < slugs.length) {
-        const slug = slugs[index]
-        index += 1
-        try {
-          const metadata = await fetchEventMetadata(slug, signal)
-          eventCategories = { ...eventCategories, [slug]: categoryFromMetadata(metadata) }
-        } catch (err) {
-          if (!(err instanceof DOMException && err.name === 'AbortError')) {
-            eventCategories = { ...eventCategories, [slug]: null }
-          }
-        } finally {
-          pendingCategorySlugs.delete(slug)
-        }
-      }
-    }
-    await Promise.all(Array.from({ length: Math.min(CATEGORY_FETCH_CONCURRENCY, slugs.length) }, worker))
   }
 
   function handleScroll() {

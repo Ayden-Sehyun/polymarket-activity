@@ -58,10 +58,15 @@ client-filter auto-fill.
 summaries, menu item state, and sticky offset derivation. `src/App.svelte`
 measures the actual table DOM and passes those measurements into this module.
 
+`src/categorySession.ts` owns category metadata hydration: slug/title inference,
+Gamma metadata fetches, pending-slug dedupe, abort/dispose behavior, and the
+event-slug category map. `src/category.ts` stays pure: category inference,
+options, settled checks, and row filtering.
+
 `src/App.svelte` owns page-level UI wiring: address validation, selected filter
-values, pUSD balance display, category metadata hydration, scroll/back-to-top,
-and table rendering. `src/pusdBalanceSession.ts` owns pUSD balance fetch state:
-normalized address, abort/stale-response handling, and fetching flags.
+values, pUSD balance display, scroll/back-to-top, and table rendering.
+`src/pusdBalanceSession.ts` owns pUSD balance fetch state: normalized address,
+abort/stale-response handling, and fetching flags.
 
 `src/category.ts` owns category inference and category filtering helpers. The
 default category is Weather. Gamma metadata is used when slug/title inference is
