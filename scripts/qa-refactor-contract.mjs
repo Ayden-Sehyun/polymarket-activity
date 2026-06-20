@@ -154,6 +154,45 @@ try {
     `tx header=${hiddenAfterReload.header}, cell=${hiddenAfterReload.cell}`,
   )
 
+  await page.locator('[data-testid="auto-refresh"]').selectOption('30000')
+  await page.locator('[data-testid="color-mode"]').selectOption('vertical')
+  await page.locator('[data-testid="filter-category"]').selectOption('')
+  await page.locator('[data-testid="filter-type"]').selectOption('CONVERSION')
+  await page.locator('[data-testid="filter-side"]').selectOption('SELL')
+  await page.locator('[data-testid="filter-outcome"]').selectOption('No')
+  await page.reload()
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('[data-testid="filter-outcome"] option')].some((option) => option.value === 'No'),
+    undefined,
+    { timeout: 12000 },
+  )
+  const persistedSelects = await page.evaluate(() => ({
+    autoRefresh: document.querySelector('[data-testid="auto-refresh"]')?.value ?? '',
+    colorMode: document.querySelector('[data-testid="color-mode"]')?.value ?? '',
+    category: document.querySelector('[data-testid="filter-category"]')?.value ?? '',
+    type: document.querySelector('[data-testid="filter-type"]')?.value ?? '',
+    side: document.querySelector('[data-testid="filter-side"]')?.value ?? '',
+    outcome: document.querySelector('[data-testid="filter-outcome"]')?.value ?? '',
+  }))
+  ok(
+    'select options persist after reload',
+    persistedSelects.autoRefresh === '30000' &&
+      persistedSelects.colorMode === 'vertical' &&
+      persistedSelects.category === '' &&
+      persistedSelects.type === 'CONVERSION' &&
+      persistedSelects.side === 'SELL' &&
+      persistedSelects.outcome === 'No',
+    JSON.stringify(persistedSelects),
+  )
+
+  await page.locator('[data-testid="auto-refresh"]').selectOption('15000')
+  await page.locator('[data-testid="color-mode"]').selectOption('horizontal')
+  await page.locator('[data-testid="filter-category"]').selectOption('')
+  await page.locator('[data-testid="filter-type"]').selectOption('')
+  await page.locator('[data-testid="filter-side"]').selectOption('')
+  await page.locator('[data-testid="filter-outcome"]').selectOption('')
+  await page.waitForSelector(ROW, { timeout: 12000 })
+
   await page.locator('[data-testid="filter-category"]').selectOption('')
   await page.waitForSelector(ROW, { timeout: 12000 })
 

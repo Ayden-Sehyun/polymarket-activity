@@ -9,6 +9,13 @@
     type Side,
   } from './api'
   import {
+    AUTO_REFRESH_OPTIONS,
+    DEFAULT_ACTIVITY_OPTIONS,
+    patchActivityOptions,
+    readActivityOptions,
+    type ActivityOptions,
+  } from './activityOptions'
+  import {
     createActivitySession,
     createInitialActivitySessionState,
     type ActivitySessionState,
@@ -19,7 +26,6 @@
     type PusdBalanceState,
   } from './pusdBalanceSession'
   import {
-    DEFAULT_CATEGORY,
     filterRows,
     getCategoryOptions,
   } from './category'
@@ -62,21 +68,14 @@
     { value: 'MERGE', label: 'MERGE' },
     { value: 'REWARD', label: 'REWARD' },
   ]
-  const AUTO_REFRESH_OPTIONS = [
-    { value: '0', label: 'AUTO OFF' },
-    { value: '5000', label: 'AUTO 5S' },
-    { value: '15000', label: 'AUTO 15S' },
-    { value: '30000', label: 'AUTO 30S' },
-    { value: '60000', label: 'AUTO 60S' },
-  ]
   const AMBIENT_REFRESH_DEDUPE_MS = 1_000
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
 
   let address = addressFromUrl()
-  let type: ActivityType | '' = ''
-  let side: Side | '' = ''
-  let outcome = ''
-  let category = DEFAULT_CATEGORY
+  let type: ActivityType | '' = DEFAULT_ACTIVITY_OPTIONS.type
+  let side: Side | '' = DEFAULT_ACTIVITY_OPTIONS.side
+  let outcome = DEFAULT_ACTIVITY_OPTIONS.outcome
+  let category = DEFAULT_ACTIVITY_OPTIONS.category
   let activitySession: ReturnType<typeof createActivitySession> | null = null
   let activityState: ActivitySessionState = createInitialActivitySessionState()
   let balanceSession: ReturnType<typeof createPusdBalanceSession> | null = null
@@ -92,7 +91,7 @@
   let parentRef: HTMLDivElement
   let activityTableRef: ActivityTable
   let measureRaf: number | undefined
-  let autoRefreshMs = '15000'
+  let autoRefreshMs = DEFAULT_ACTIVITY_OPTIONS.autoRefreshMs
   let shellWidth = '100%'
   let colorMode: ColorBarMode = DEFAULT_COLOR_BAR_MODE
   let lastAmbientRefreshAt = 0
@@ -136,6 +135,12 @@
   }
 
   onMount(() => {
+    const savedOptions = readActivityOptions(window.localStorage)
+    type = savedOptions.type
+    side = savedOptions.side
+    outcome = savedOptions.outcome
+    category = savedOptions.category
+    autoRefreshMs = savedOptions.autoRefreshMs
     columnState = readColumnState(window.localStorage)
     colorMode = readColorBarMode(window.localStorage)
     activitySession = createActivitySession({
@@ -208,6 +213,35 @@
     persistColorBarMode(window.localStorage, mode)
   }
 
+  function setActivityOption(patch: Partial<ActivityOptions>) {
+    patchActivityOptions(window.localStorage, patch)
+  }
+
+  function changeAutoRefresh(event: Event) {
+    autoRefreshMs = (event.currentTarget as HTMLSelectElement).value as ActivityOptions['autoRefreshMs']
+    setActivityOption({ autoRefreshMs })
+  }
+
+  function changeType(event: Event) {
+    type = (event.currentTarget as HTMLSelectElement).value as ActivityType | ''
+    setActivityOption({ type })
+  }
+
+  function changeSide(event: Event) {
+    side = (event.currentTarget as HTMLSelectElement).value as Side | ''
+    setActivityOption({ side })
+  }
+
+  function changeOutcome(event: Event) {
+    outcome = (event.currentTarget as HTMLSelectElement).value
+    setActivityOption({ outcome })
+  }
+
+  function changeCategory(event: Event) {
+    category = (event.currentTarget as HTMLSelectElement).value
+    setActivityOption({ category })
+  }
+
   async function scheduleStickyMeasure() {
     if (activityState.loading || typeof window === 'undefined') return
     if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
@@ -277,6 +311,7 @@
               data-testid="auto-refresh"
               aria-label="Auto refresh cadence"
               class="pill-select ui-top-cell shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary"
+              on:change={changeAutoRefresh}
             >
               {#each AUTO_REFRESH_OPTIONS as option}
                 <option value={option.value}>{option.label}</option>
@@ -310,21 +345,21 @@
       {#if validAddress}
         <div data-testid="filter-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={type} data-testid="filter-type" aria-label="Activity type" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={type} data-testid="filter-type" aria-label="Activity type" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeType}>
             {#each TYPE_OPTIONS as option}
               <option value={option.value}>{option.label}</option>
             {/each}
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={side} data-testid="filter-side" aria-label="Trade side" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={side} data-testid="filter-side" aria-label="Trade side" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeSide}>
             <option value="">BUY + SELL</option>
             <option value="BUY">BUY</option>
             <option value="SELL">SELL</option>
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={outcome} data-testid="filter-outcome" aria-label="Outcome" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={outcome} data-testid="filter-outcome" aria-label="Outcome" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeOutcome}>
             <option value="">YES + NO</option>
             {#each outcomes as option}
               <option value={option}>{option.toUpperCase()}</option>
@@ -332,7 +367,7 @@
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={category} data-testid="filter-category" aria-label="Market category" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={category} data-testid="filter-category" aria-label="Market category" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeCategory}>
             <option value="">ALL CATEGORIES</option>
             {#each categoryOptions as option}
               <option value={option.value}>{option.label.toUpperCase()}</option>
