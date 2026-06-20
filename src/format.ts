@@ -10,11 +10,11 @@ export const formatTimeShort = (ts: number) =>
 
 export const txHref = (hash: string) => `https://polygonscan.com/tx/${hash}`
 
-export const capitalize = (s: string) => (s ? s[0] + s.slice(1).toLowerCase() : s)
+const capitalize = (s: string) => (s ? s[0] + s.slice(1).toLowerCase() : s)
 
 export const displayType = (value: ActivityType) => (value === 'CONVERSION' ? 'Convert' : capitalize(value))
 
-export const normalizeDate = (date: string) => date.replace(/\bJune\b/, 'Jun').replace(/\bMay\b/, 'May')
+const normalizeDate = (date: string) => date.replace(/\bJune\b/, 'Jun').replace(/\bMay\b/, 'May')
 
 export function compactWeatherTitle(title: string): { city: string; temp: string; date: string; low: boolean } | null {
   const weather = title.match(
@@ -59,7 +59,8 @@ const TAILWIND_DISTINCT_ACCENTS = [
   'oklch(68.5% 0.169 237.323 / 0.45)', // sky-500
 ] as const
 
-export const eventAccentForIndex = (index: number) => TAILWIND_DISTINCT_ACCENTS[index % TAILWIND_DISTINCT_ACCENTS.length]
+export const eventAccentForIndex = (index: number) =>
+  TAILWIND_DISTINCT_ACCENTS[index % TAILWIND_DISTINCT_ACCENTS.length]
 
 export const sequentialEventGroupAccents = (rows: Pick<Activity, 'eventSlug'>[]) => {
   const accents: string[] = []
@@ -81,18 +82,10 @@ export const sequentialEventGroupAccents = (rows: Pick<Activity, 'eventSlug'>[])
 }
 
 export const sideClass = (value: Side | '') =>
-  value === 'BUY'
-    ? 'text-green-600'
-    : value === 'SELL'
-      ? 'text-red-600'
-      : 'text-foreground'
+  value === 'BUY' ? 'text-green-600' : value === 'SELL' ? 'text-red-600' : 'text-foreground'
 
 export const outcomeClass = (value: string) =>
-  value.toLowerCase() === 'yes'
-    ? 'text-green-600'
-    : value.toLowerCase() === 'no'
-      ? 'text-red-600'
-      : 'text-foreground'
+  value.toLowerCase() === 'yes' ? 'text-green-600' : value.toLowerCase() === 'no' ? 'text-red-600' : 'text-foreground'
 
 export function formatDecimal(value: number, decimals: number) {
   if (!Number.isFinite(value)) return null

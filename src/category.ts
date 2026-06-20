@@ -72,7 +72,11 @@ const titleCase = (value: string) =>
     .trim()
     .replace(/\b\w/g, (char) => char.toUpperCase())
 
-const normalizeCategorySlug = (value: string) => value.trim().toLowerCase().replace(/[_\s]+/g, '-')
+const normalizeCategorySlug = (value: string) =>
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/[_\s]+/g, '-')
 
 const categoryOption = (value: string): CategoryOption => {
   const normalized = normalizeCategorySlug(value)
@@ -99,11 +103,13 @@ export function categoryFromActivity(row: Activity): CategoryOption | null {
   if (/\belection\b|\bmayoral\b|\bpresidential\b|\bsenate\b|\bcongress\b|\btrump\b|\bbiden\b|\bpolitics\b/.test(text)) {
     return categoryOption('politics')
   }
-  if (/\bbitcoin\b|\bbtc\b|\beth\b|\bethereum\b|\bsol\b|\bsolana\b|\bcrypto\b/.test(text)) return categoryOption('crypto')
+  if (/\bbitcoin\b|\bbtc\b|\beth\b|\bethereum\b|\bsol\b|\bsolana\b|\bcrypto\b/.test(text))
+    return categoryOption('crypto')
   if (/\bnba\b|\bnfl\b|\bmlb\b|\bnhl\b|\bufc\b|\bsoccer\b|\bfootball\b|\btennis\b|\bgolf\b|\bcricket\b/.test(text)) {
     return categoryOption('sports')
   }
-  if (/\bgdp\b|\bcpi\b|\binflation\b|\bfed\b|\brate-cut\b|\beconomy\b|\brecession\b/.test(text)) return categoryOption('economy')
+  if (/\bgdp\b|\bcpi\b|\binflation\b|\bfed\b|\brate-cut\b|\beconomy\b|\brecession\b/.test(text))
+    return categoryOption('economy')
   return null
 }
 
@@ -120,10 +126,6 @@ export function getCategoryOptions(sourceRows: Activity[], sourceCategories: Rec
   return [...byValue.entries()]
     .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label))
-}
-
-export function areCategoriesSettled(sourceRows: Activity[], sourceCategories: Record<string, CategoryOption | null>) {
-  return sourceRows.every((row) => !row.eventSlug || row.eventSlug in sourceCategories)
 }
 
 export function filterRows(

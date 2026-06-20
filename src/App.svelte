@@ -20,21 +20,9 @@
     createInitialActivitySessionState,
     type ActivitySessionState,
   } from './activitySession'
-  import {
-    createInitialPusdBalanceState,
-    createPusdBalanceSession,
-    type PusdBalanceState,
-  } from './pusdBalanceSession'
-  import {
-    filterRows,
-    getCategoryOptions,
-  } from './category'
-  import {
-    DEFAULT_COLOR_BAR_MODE,
-    persistColorBarMode,
-    readColorBarMode,
-    type ColorBarMode,
-  } from './colorBar'
+  import { createInitialPusdBalanceState, createPusdBalanceSession, type PusdBalanceState } from './pusdBalanceSession'
+  import { filterRows, getCategoryOptions } from './category'
+  import { DEFAULT_COLOR_BAR_MODE, persistColorBarMode, readColorBarMode, type ColorBarMode } from './colorBar'
   import {
     createCategorySession,
     createInitialCategorySessionState,
@@ -52,10 +40,7 @@
   } from './columnState'
   import ActivityTable from './ActivityTable.svelte'
   import ColumnConfig from './ColumnConfig.svelte'
-  import {
-    formatPusdBalance,
-    shortHash,
-  } from './format'
+  import { formatPusdBalance, shortHash } from './format'
 
   const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/
 
@@ -114,9 +99,10 @@
     stickyKey
     if (!activityState.loading) void scheduleStickyMeasure()
   }
-  $: statusText = activityState.lastRefreshAt === null
-    ? 'REFRESHING'
-    : `${Math.max(0, Math.floor((now - activityState.lastRefreshAt) / 1000))}S AGO`
+  $: statusText =
+    activityState.lastRefreshAt === null
+      ? 'REFRESHING'
+      : `${Math.max(0, Math.floor((now - activityState.lastRefreshAt) / 1000))}S AGO`
   $: statusCursor = activityState.nextCursor ? 'more' : validAddress ? 'end' : ''
   $: empty = !activityState.loading && rows.length === 0
   $: profile = getProfile(allRows)
@@ -260,7 +246,9 @@
     activityTableRef?.measure()
   }
 
-  function handleTableMeasured(event: CustomEvent<{ stickyOffsets: Partial<Record<ColumnId, number>>; shellWidth: string }>) {
+  function handleTableMeasured(
+    event: CustomEvent<{ stickyOffsets: Partial<Record<ColumnId, number>>; shellWidth: string }>,
+  ) {
     stickyOffsets = event.detail.stickyOffsets
     shellWidth = event.detail.shellWidth
   }
@@ -302,7 +290,6 @@
     if (parentRef) parentRef.scrollTop = 0
     showTop = false
   }
-
 </script>
 
 <div class="app-root grid min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] font-mono text-foreground">
@@ -310,9 +297,17 @@
     <div class="flex flex-col">
       <div class="top-status-row flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {#if validAddress}
-          <span class="ui-top-cell flex max-w-52 shrink-0 items-center truncate font-semibold text-foreground" data-testid="profile-name">{profile.name}</span>
-          <span class="ui-top-cell flex shrink-0 items-center font-mono text-muted-foreground">{shortHash(address)}</span>
-          <span class="ui-top-cell flex shrink-0 items-center font-mono text-[var(--secondary-text)]" data-testid="pusd-balance">
+          <span
+            class="ui-top-cell flex max-w-52 shrink-0 items-center truncate font-semibold text-foreground"
+            data-testid="profile-name">{profile.name}</span
+          >
+          <span class="ui-top-cell flex shrink-0 items-center font-mono text-muted-foreground"
+            >{shortHash(address)}</span
+          >
+          <span
+            class="ui-top-cell flex shrink-0 items-center font-mono text-[var(--secondary-text)]"
+            data-testid="pusd-balance"
+          >
             {#if pusdBalanceState.balance !== null}
               {formatPusdBalance(pusdBalanceState.balance)} PUSD
             {:else if pusdBalanceState.fetching}
@@ -359,35 +354,62 @@
       </div>
 
       {#if validAddress}
-        <div data-testid="filter-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div
+          data-testid="filter-row"
+          class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={type} data-testid="filter-type" aria-label="Activity type" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeType}>
-            {#each TYPE_OPTIONS as option}
-              <option value={option.value}>{option.label}</option>
-            {/each}
+            <select
+              bind:value={type}
+              data-testid="filter-type"
+              aria-label="Activity type"
+              class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary"
+              on:change={changeType}
+            >
+              {#each TYPE_OPTIONS as option}
+                <option value={option.value}>{option.label}</option>
+              {/each}
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={side} data-testid="filter-side" aria-label="Trade side" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeSide}>
-            <option value="">BUY + SELL</option>
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
+            <select
+              bind:value={side}
+              data-testid="filter-side"
+              aria-label="Trade side"
+              class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary"
+              on:change={changeSide}
+            >
+              <option value="">BUY + SELL</option>
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={outcome} data-testid="filter-outcome" aria-label="Outcome" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeOutcome}>
-            <option value="">YES + NO</option>
-            {#each outcomes as option}
-              <option value={option}>{option.toUpperCase()}</option>
-            {/each}
+            <select
+              bind:value={outcome}
+              data-testid="filter-outcome"
+              aria-label="Outcome"
+              class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary"
+              on:change={changeOutcome}
+            >
+              <option value="">YES + NO</option>
+              {#each outcomes as option}
+                <option value={option}>{option.toUpperCase()}</option>
+              {/each}
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={category} data-testid="filter-category" aria-label="Market category" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary" on:change={changeCategory}>
-            <option value="">ALL CATEGORIES</option>
-            {#each categoryOptions as option}
-              <option value={option.value}>{option.label.toUpperCase()}</option>
-            {/each}
+            <select
+              bind:value={category}
+              data-testid="filter-category"
+              aria-label="Market category"
+              class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary"
+              on:change={changeCategory}
+            >
+              <option value="">ALL CATEGORIES</option>
+              {#each categoryOptions as option}
+                <option value={option.value}>{option.label.toUpperCase()}</option>
+              {/each}
             </select>
           </label>
         </div>
@@ -411,15 +433,24 @@
 
   <main class="mx-auto min-h-0 min-w-0 px-0 pb-0 pt-0 md:px-0" style={`width: ${shellWidth}`}>
     {#if activityState.error}
-      <p class="error ui-message flex items-center gap-3 border-x border-b border-red-600 bg-red-950/30 font-mono uppercase text-red-600" data-testid="error">
+      <p
+        class="error ui-message flex items-center gap-3 border-x border-b border-red-600 bg-red-950/30 font-mono uppercase text-red-600"
+        data-testid="error"
+      >
         <span class="min-w-0 flex-1 break-words">{activityState.error.message}</span>
-        <button type="button" class="ui-action shrink-0 border border-red-600 bg-destructive text-white" on:click={retry}>
+        <button
+          type="button"
+          class="ui-action shrink-0 border border-red-600 bg-destructive text-white"
+          on:click={retry}
+        >
           retry
         </button>
       </p>
     {/if}
 
-    <div class="h-full min-w-0 overflow-hidden border-x border-b border-hairline bg-card p-0 text-sm text-card-foreground">
+    <div
+      class="h-full min-w-0 overflow-hidden border-x border-b border-hairline bg-card p-0 text-sm text-card-foreground"
+    >
       <div
         bind:this={parentRef}
         on:scroll={handleScroll}

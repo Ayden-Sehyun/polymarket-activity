@@ -46,11 +46,15 @@ try {
     undefined,
     { timeout: 15000 },
   )
-  const types = await page.$$eval(ROW, (rows) =>
-    [...new Set(rows.map((r) => r.querySelector('[data-testid="cell-type"]')?.textContent?.trim()))],
-  )
+  const types = await page.$$eval(ROW, (rows) => [
+    ...new Set(rows.map((r) => r.querySelector('[data-testid="cell-type"]')?.textContent?.trim())),
+  ])
   const errGone = (await page.locator('[data-testid="error"]').count()) === 0
-  ok('retry recovers', errGone && types.length === 1 && types[0] === 'Redeem', `error visible=${!errGone}, types=${types}`)
+  ok(
+    'retry recovers',
+    errGone && types.length === 1 && types[0] === 'Redeem',
+    `error visible=${!errGone}, types=${types}`,
+  )
 } catch (err) {
   failures += 1
   console.error('FAIL  qa-error threw:', err instanceof Error ? err.message : err)

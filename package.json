@@ -3,9 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "description": "Dense Svelte wallet-activity table for Polymarket.",
+  "license": "ISC",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
+    "knip": "knip",
+    "lint": "oxlint . --import-plugin --vitest-plugin --deny-warnings",
     "test:unit": "vitest run",
     "qa": "node scripts/qa.mjs",
     "qa:desktop": "node scripts/qa.mjs desktop",
@@ -14,12 +20,10 @@
     "qa:contract": "node scripts/qa-refactor-contract.mjs",
     "qa:error": "node scripts/qa-error.mjs",
     "smoke": "node scripts/smoke-prod.mjs",
-    "refactor:check": "npm run build && npm run test:unit && node scripts/refactor-check-browser.mjs",
+    "refactor:check": "npm run knip && npm run lint && npm run format:check && npm run build && npm run test:unit && node scripts/refactor-check-browser.mjs",
     "test": "npm run test:unit && npm run qa && npm run qa:error",
     "preview": "vite preview"
   },
-  "license": "ISC",
-  "type": "module",
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "tailwindcss": "^4.3.0"
@@ -27,6 +31,9 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@types/node": "^25.9.3",
+    "knip": "^6.17.1",
+    "oxfmt": "^0.55.0",
+    "oxlint": "^1.70.0",
     "playwright": "^1.60.0",
     "svelte": "^5.56.3",
     "svelte-check": "^4.6.0",

@@ -1,7 +1,7 @@
 import type { ActivityDisplayRow } from './displayRow'
 import { outcomeClass, sideClass } from './format'
 
-export type CellAlign = 'left' | 'right'
+type CellAlign = 'left' | 'right'
 
 export type ActivityColumn = {
   id: string

@@ -8,7 +8,7 @@ export type ColumnState = {
 }
 export type ColumnLayout = {
   visibleByColumn: Record<ColumnId, boolean>
-  visibleColumnDefs: typeof ACTIVITY_COLUMNS[number][]
+  visibleColumnDefs: (typeof ACTIVITY_COLUMNS)[number][]
   firstVisibleColumn: ColumnId | undefined
   activeStickyColumns: ColumnId[]
   stickyByColumn: Record<ColumnId, boolean>
@@ -50,7 +50,9 @@ export function readColumnState(storage: Storage): ColumnState {
   )
   const stickyColumns = migrateStickyColumns(
     storage,
-    readColumnList(storage, STICKY_STORAGE_KEY, DEFAULT_STICKY_COLUMNS).filter((column) => visibleColumns.includes(column)),
+    readColumnList(storage, STICKY_STORAGE_KEY, DEFAULT_STICKY_COLUMNS).filter((column) =>
+      visibleColumns.includes(column),
+    ),
     visibleColumns,
   )
   return { visibleColumns, stickyColumns }
@@ -110,7 +112,10 @@ export function getColumnLayout(state: ColumnState, stickyOffsets: Partial<Recor
   )
   const headerClassByColumn = ACTIVITY_COLUMNS.reduce(
     (out, column) => {
-      out[column.id] = joinClasses(column.align === 'right' ? 'text-right tabular-nums' : '', stickyClassByColumn[column.id])
+      out[column.id] = joinClasses(
+        column.align === 'right' ? 'text-right tabular-nums' : '',
+        stickyClassByColumn[column.id],
+      )
       return out
     },
     {} as Record<ColumnId, string>,
@@ -130,7 +135,9 @@ export function getColumnLayout(state: ColumnState, stickyOffsets: Partial<Recor
         ? 'STICKY NONE'
         : `STICKY ${activeStickyColumns.map((column) => columnLabel(column)).join(' + ')}`,
     visibleSummary:
-      state.visibleColumns.length === ACTIVITY_COLUMNS.length ? 'COLS ALL' : `COLS ${state.visibleColumns.length}/${ACTIVITY_COLUMNS.length}`,
+      state.visibleColumns.length === ACTIVITY_COLUMNS.length
+        ? 'COLS ALL'
+        : `COLS ${state.visibleColumns.length}/${ACTIVITY_COLUMNS.length}`,
     menuItems: ACTIVITY_COLUMNS.map((column) => ({
       id: column.id,
       label: column.label,

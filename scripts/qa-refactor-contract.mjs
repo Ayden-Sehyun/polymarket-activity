@@ -77,13 +77,16 @@ await context.route('https://data-api.polymarket.com/activity**', async (route) 
   })
 })
 
-await context.route(/https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-rpc\.publicnode\.com).*/, async (route) => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x0' }),
-  })
-})
+await context.route(
+  /https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-rpc\.publicnode\.com).*/,
+  async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x0' }),
+    })
+  },
+)
 
 try {
   await page.goto(`${APP_URL}/?address=${DEFAULT}`)
@@ -162,7 +165,8 @@ try {
   await page.locator('[data-testid="filter-outcome"]').selectOption('No')
   await page.reload()
   await page.waitForFunction(
-    () => [...document.querySelectorAll('[data-testid="filter-outcome"] option')].some((option) => option.value === 'No'),
+    () =>
+      [...document.querySelectorAll('[data-testid="filter-outcome"] option')].some((option) => option.value === 'No'),
     undefined,
     { timeout: 12000 },
   )
@@ -197,25 +201,44 @@ try {
   await page.waitForSelector(ROW, { timeout: 12000 })
 
   await page.locator('[data-testid="filter-type"]').selectOption('CONVERSION')
-  await page.waitForFunction(() => {
-    const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
-    return rows.length > 0 && rows.every((row) => row.querySelector('[data-col="type"]')?.textContent?.trim() === 'Convert')
-  }, undefined, { timeout: 12000 })
+  await page.waitForFunction(
+    () => {
+      const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
+      return (
+        rows.length > 0 &&
+        rows.every((row) => row.querySelector('[data-col="type"]')?.textContent?.trim() === 'Convert')
+      )
+    },
+    undefined,
+    { timeout: 12000 },
+  )
   ok('type filter updates visible rows', true)
 
   await page.locator('[data-testid="filter-type"]').selectOption('')
   await page.locator('[data-testid="filter-side"]').selectOption('SELL')
-  await page.waitForFunction(() => {
-    const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
-    return rows.length > 0 && rows.every((row) => row.querySelector('[data-col="side"]')?.textContent?.trim() === 'Sell')
-  }, undefined, { timeout: 12000 })
+  await page.waitForFunction(
+    () => {
+      const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
+      return (
+        rows.length > 0 && rows.every((row) => row.querySelector('[data-col="side"]')?.textContent?.trim() === 'Sell')
+      )
+    },
+    undefined,
+    { timeout: 12000 },
+  )
   ok('side filter updates visible rows', true)
 
   await page.locator('[data-testid="filter-outcome"]').selectOption('No')
-  await page.waitForFunction(() => {
-    const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
-    return rows.length > 0 && rows.every((row) => row.querySelector('[data-col="outcome"]')?.textContent?.trim() === 'No')
-  }, undefined, { timeout: 12000 })
+  await page.waitForFunction(
+    () => {
+      const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]
+      return (
+        rows.length > 0 && rows.every((row) => row.querySelector('[data-col="outcome"]')?.textContent?.trim() === 'No')
+      )
+    },
+    undefined,
+    { timeout: 12000 },
+  )
   ok('outcome filter updates visible rows', true)
 
   await page.locator('[data-testid="filter-side"]').selectOption('')
@@ -228,12 +251,17 @@ try {
     { timeout: 12000 },
   )
   const afterTotal = Number(await page.locator('[data-testid="status"]').getAttribute('data-total'))
-  ok('load more appends unique rows without duplicate key warnings', afterTotal > beforeTotal, `${beforeTotal} -> ${afterTotal}`)
+  ok(
+    'load more appends unique rows without duplicate key warnings',
+    afterTotal > beforeTotal,
+    `${beforeTotal} -> ${afterTotal}`,
+  )
 
   const autoContext = await browser.newContext({ viewport: { width: 980, height: 760 } })
   await autoContext.addInitScript(() => {
     const realSetInterval = window.setInterval.bind(window)
-    window.setInterval = (handler, timeout, ...args) => realSetInterval(handler, Number(timeout) >= 5000 ? 60 : timeout, ...args)
+    window.setInterval = (handler, timeout, ...args) =>
+      realSetInterval(handler, Number(timeout) >= 5000 ? 60 : timeout, ...args)
     window.localStorage.setItem('activity-options', JSON.stringify({ autoRefreshMs: '5000', category: '' }))
   })
   let autoActivityCalls = 0
@@ -247,14 +275,17 @@ try {
       body: JSON.stringify(filterServerRows(url.searchParams.get('limit') === '50' ? previewRows : historyRows, url)),
     })
   })
-  await autoContext.route(/https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-rpc\.publicnode\.com).*/, async (route) => {
-    autoBalanceCalls += 1
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x3b9aca00' }),
-    })
-  })
+  await autoContext.route(
+    /https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-rpc\.publicnode\.com).*/,
+    async (route) => {
+      autoBalanceCalls += 1
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x3b9aca00' }),
+      })
+    },
+  )
   const autoPage = await autoContext.newPage()
   await autoPage.goto(`${APP_URL}/?address=${DEFAULT}`)
   await autoPage.waitForSelector(ROW, { timeout: 12000 })

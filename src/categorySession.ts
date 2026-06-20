@@ -78,7 +78,8 @@ class CategorySession {
         index += 1
         try {
           const metadata = await this.fetchEventMetadata(slug, signal)
-          if (!this.disposed) this.patch({ categories: { ...this.state.categories, [slug]: categoryFromMetadata(metadata) } })
+          if (!this.disposed)
+            this.patch({ categories: { ...this.state.categories, [slug]: categoryFromMetadata(metadata) } })
         } catch (err) {
           if (!isAbortError(err) && !this.disposed) {
             this.patch({ categories: { ...this.state.categories, [slug]: null } })

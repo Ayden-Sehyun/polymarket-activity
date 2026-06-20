@@ -108,7 +108,10 @@
     @apply font-sans;
     background: var(--page);
     font-feature-settings:
-      'liga' 0, 'calt' 0, 'tnum' 1, 'zero' 1;
+      'liga' 0,
+      'calt' 0,
+      'tnum' 1,
+      'zero' 1;
     -webkit-text-size-adjust: 100%;
   }
   body {
@@ -310,7 +313,6 @@
       height: var(--h-top);
     }
   }
-
 }
 
 @media (max-width: 767px) {

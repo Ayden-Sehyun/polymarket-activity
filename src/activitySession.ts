@@ -8,7 +8,7 @@ import {
   type Cursor,
 } from './api'
 
-export type ActivitySessionQuery = {
+type ActivitySessionQuery = {
   address: string
   validAddress: boolean
 }
@@ -172,7 +172,13 @@ class ActivitySession {
     const fetchAddress = this.query.address.toLowerCase()
     this.patch({ fetching: true })
     try {
-      const page = await this.fetchPage(fetchAddress, this.filters(), { offset: 0 }, controller.signal, this.initialPageSize)
+      const page = await this.fetchPage(
+        fetchAddress,
+        this.filters(),
+        { offset: 0 },
+        controller.signal,
+        this.initialPageSize,
+      )
       if (seq !== this.requestSeq) return
       this.pages = [page.items]
       this.patch({

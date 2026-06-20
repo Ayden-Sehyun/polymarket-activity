@@ -63,7 +63,11 @@
   }
 </script>
 
-<div bind:this={configRow} data-testid="config-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+<div
+  bind:this={configRow}
+  data-testid="config-row"
+  class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+>
   {@render ColumnMenu('sticky')}
   {@render ColumnMenu('visible')}
   <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
@@ -94,7 +98,9 @@
       data-testid={kind === 'sticky' ? 'sticky-menu' : 'columns-menu'}
     >
       {#each columnLayout.menuItems as column}
-        <label class={`${COLUMN_MENU_ITEM_CLASS} ${kind === 'sticky' ? (column.visibleChecked ? 'text-foreground' : 'text-[var(--faint)]') : `text-foreground ${column.visibleDisabled ? 'opacity-50' : ''}`}`}>
+        <label
+          class={`${COLUMN_MENU_ITEM_CLASS} ${kind === 'sticky' ? (column.visibleChecked ? 'text-foreground' : 'text-[var(--faint)]') : `text-foreground ${column.visibleDisabled ? 'opacity-50' : ''}`}`}
+        >
           <input
             type="checkbox"
             class="accent-primary"

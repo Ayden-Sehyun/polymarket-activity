@@ -81,15 +81,22 @@ async function runSweep(mode) {
     apiCalls.push(entry)
   })
 
-  const statusText = async () =>
-    (await page.locator('[data-testid="status"]').first().innerText()).replace(/\s+/g, ' ')
+  const statusText = async () => (await page.locator('[data-testid="status"]').first().innerText()).replace(/\s+/g, ' ')
   const statusCursor = async () =>
-    (await page.locator('[data-testid="status"]').first().getAttribute('data-cursor').catch(() => '')) || ''
+    (await page
+      .locator('[data-testid="status"]')
+      .first()
+      .getAttribute('data-cursor')
+      .catch(() => '')) || ''
   const rowCounts = async () => {
-    const attrs = await page.locator('[data-testid="status"]').first().evaluate((el) => ({
-      shown: el.getAttribute('data-shown'),
-      total: el.getAttribute('data-total'),
-    })).catch(() => ({ shown: null, total: null }))
+    const attrs = await page
+      .locator('[data-testid="status"]')
+      .first()
+      .evaluate((el) => ({
+        shown: el.getAttribute('data-shown'),
+        total: el.getAttribute('data-total'),
+      }))
+      .catch(() => ({ shown: null, total: null }))
     const text = await statusText()
     if (attrs.total !== null) {
       return { shown: +(attrs.shown ?? attrs.total), total: +attrs.total, text }
@@ -244,20 +251,20 @@ async function runSweep(mode) {
 
   // ---- category filter, inferred from slug immediately and Gamma-backed for unknowns
   const categorySelect = page.locator('[data-testid="filter-category"]')
-  await page.waitForFunction(
-    () => [...document.querySelectorAll('[data-testid="filter-category"] option')].some((o) => o.value === 'weather'),
-    undefined,
-    { timeout: 10000 },
-  ).catch(() => {})
-  const categoryValues = await categorySelect.locator('option').evaluateAll((options) =>
-    options.map((option) => ({ value: option.value, label: option.textContent?.trim() ?? '' })),
-  )
+  await page
+    .waitForFunction(
+      () => [...document.querySelectorAll('[data-testid="filter-category"] option')].some((o) => o.value === 'weather'),
+      undefined,
+      { timeout: 10000 },
+    )
+    .catch(() => {})
+  const categoryValues = await categorySelect
+    .locator('option')
+    .evaluateAll((options) =>
+      options.map((option) => ({ value: option.value, label: option.textContent?.trim() ?? '' })),
+    )
   const defaultCategory = await categorySelect.evaluate((select) => select.value)
-  ok(
-    'category defaults to Weather',
-    defaultCategory === 'weather',
-    `selected=${defaultCategory || 'all'}`,
-  )
+  ok('category defaults to Weather', defaultCategory === 'weather', `selected=${defaultCategory || 'all'}`)
   await categorySelect.selectOption('weather').catch(() => {})
   await sleep(400)
   const categoryRows = await visibleRows()
@@ -308,18 +315,20 @@ async function runSweep(mode) {
   const stickyMetrics = await page.evaluate(() => {
     const columns = ['city', 'temp', 'date', 'side']
     const read = (scope) =>
-      columns.map((col) => {
-        const el = document.querySelector(`${scope} [data-col="${col}"]`)
-        if (!el) return null
-        const rect = el.getBoundingClientRect()
-        return {
-          col,
-          left: Number.parseFloat(getComputedStyle(el).left),
-          sticky: el.classList.contains('raw-sticky-cell'),
-          width: rect.width,
-          x: rect.x,
-        }
-      }).filter(Boolean)
+      columns
+        .map((col) => {
+          const el = document.querySelector(`${scope} [data-col="${col}"]`)
+          if (!el) return null
+          const rect = el.getBoundingClientRect()
+          return {
+            col,
+            left: Number.parseFloat(getComputedStyle(el).left),
+            sticky: el.classList.contains('raw-sticky-cell'),
+            width: rect.width,
+            x: rect.x,
+          }
+        })
+        .filter(Boolean)
     return {
       summary: document.querySelector('[data-testid="sticky-summary"]')?.textContent?.trim() ?? '',
       headers: read('[data-testid="raw-header"]'),
@@ -328,17 +337,23 @@ async function runSweep(mode) {
   })
   const headerByCol = new Map(stickyMetrics.headers.map((item) => [item.col, item]))
   const cellByCol = new Map(stickyMetrics.cells.map((item) => [item.col, item]))
-  const stickyTriple = ['city', 'temp', 'date'].every((col) => headerByCol.get(col)?.sticky && cellByCol.get(col)?.sticky)
-  const sideUnsticky = !headerByCol.get('side')?.sticky && !cellByCol.get('side')?.sticky
-  const offsetsMatch = ['city', 'temp', 'date'].every((col) =>
-    Math.abs((headerByCol.get(col)?.left ?? 0) - (cellByCol.get(col)?.left ?? 0)) < 1,
+  const stickyTriple = ['city', 'temp', 'date'].every(
+    (col) => headerByCol.get(col)?.sticky && cellByCol.get(col)?.sticky,
   )
-  const positionsMatch = ['city', 'temp', 'date'].every((col) =>
-    Math.abs((headerByCol.get(col)?.x ?? 0) - (cellByCol.get(col)?.x ?? 0)) < 1,
+  const sideUnsticky = !headerByCol.get('side')?.sticky && !cellByCol.get('side')?.sticky
+  const offsetsMatch = ['city', 'temp', 'date'].every(
+    (col) => Math.abs((headerByCol.get(col)?.left ?? 0) - (cellByCol.get(col)?.left ?? 0)) < 1,
+  )
+  const positionsMatch = ['city', 'temp', 'date'].every(
+    (col) => Math.abs((headerByCol.get(col)?.x ?? 0) - (cellByCol.get(col)?.x ?? 0)) < 1,
   )
   ok(
     'sticky column picker pins selected columns',
-    stickyMetrics.summary.includes('CITY + TEMP + DATE') && stickyTriple && sideUnsticky && offsetsMatch && positionsMatch,
+    stickyMetrics.summary.includes('CITY + TEMP + DATE') &&
+      stickyTriple &&
+      sideUnsticky &&
+      offsetsMatch &&
+      positionsMatch,
     stickyMetrics.summary,
   )
 
@@ -418,20 +433,26 @@ async function runSweep(mode) {
     if (rc.total >= 3600 || /end of history|cursor=end| END/.test(rc.text)) break
     if ((await loadMore.count()) === 0) break
     await loadMore.click()
-    await page.waitForFunction(
-      (previousTotal) => {
-        const status = document.querySelector('[data-testid="status"]')
-        const total = Number(status?.getAttribute('data-total') || 0)
-        const button = document.querySelector('[data-testid="load-more"]')
-        return total > previousTotal || !button || !button.hasAttribute('disabled')
-      },
-      lastTotal,
-      { timeout: 20000 },
-    ).catch(() => {})
+    await page
+      .waitForFunction(
+        (previousTotal) => {
+          const status = document.querySelector('[data-testid="status"]')
+          const total = Number(status?.getAttribute('data-total') || 0)
+          const button = document.querySelector('[data-testid="load-more"]')
+          return total > previousTotal || !button || !button.hasAttribute('disabled')
+        },
+        lastTotal,
+        { timeout: 20000 },
+      )
+      .catch(() => {})
     await sleep(300)
     rc = await rowCounts()
-    if (rc.total === lastTotal) stall++
-    else (stall = 0), (lastTotal = rc.total)
+    if (rc.total === lastTotal) {
+      stall++
+    } else {
+      stall = 0
+      lastTotal = rc.total
+    }
     if (stall > 2) break
   }
   rc = await rowCounts()
@@ -543,8 +564,14 @@ async function runSweep(mode) {
   let cursor = await statusCursor()
   ok(
     '🔍 wallet with no history → "No rows." + end of history',
-    (await page.locator('[data-testid="empty"]').count()) === 1 && (cursor === 'end' || /end of history|cursor=end| END/.test(txt)),
-    `${(await page.locator('[data-testid="empty"]').innerText().catch(() => '')).trim()} | ${txt.slice(-40)}`,
+    (await page.locator('[data-testid="empty"]').count()) === 1 &&
+      (cursor === 'end' || /end of history|cursor=end| END/.test(txt)),
+    `${(
+      await page
+        .locator('[data-testid="empty"]')
+        .innerText()
+        .catch(() => '')
+    ).trim()} | ${txt.slice(-40)}`,
   )
 
   await page.goto(`${APP_URL}/?address=${'0x' + DEFAULT.slice(2).toUpperCase()}`)
@@ -561,7 +588,11 @@ async function runSweep(mode) {
   await sleep(2000)
   rc = await rowCounts()
   const errs = consoleIssues.filter((c) => !c.includes('React DevTools'))
-  ok('🔍 rapid filter toggling → no errors, rows intact', rc.total > 0 && errs.length === 0, errs[0] || `${rc.total} rows`)
+  ok(
+    '🔍 rapid filter toggling → no errors, rows intact',
+    rc.total > 0 && errs.length === 0,
+    errs[0] || `${rc.total} rows`,
+  )
 
   // ---- responsive checks ----
   if (isMobile) {
@@ -582,7 +613,11 @@ async function runSweep(mode) {
     )
 
     const rowBox = await page.locator(RAW_ROW).first().boundingBox()
-    ok('mobile: dense raw row is compact', !!rowBox && rowBox.height <= 36, `${rowBox ? Math.round(rowBox.height) : 0}px`)
+    ok(
+      'mobile: dense raw row is compact',
+      !!rowBox && rowBox.height <= 36,
+      `${rowBox ? Math.round(rowBox.height) : 0}px`,
+    )
 
     await page.screenshot({ path: '/tmp/pm_qa_mobile_top.png' })
     await scrollContainer(900)
@@ -590,8 +625,17 @@ async function runSweep(mode) {
     await page.screenshot({ path: '/tmp/pm_qa_mobile_rows.png' })
     await scrollContainer(0)
   } else {
-    const firstCityText = (await page.locator(`${RAW_ROW} [role="cell"]`).first().innerText().catch(() => '')).trim()
-    const cityHeaderVisible = await page.locator('[data-testid="raw-header"] [role="columnheader"]:has-text("City")').first().isVisible()
+    const firstCityText = (
+      await page
+        .locator(`${RAW_ROW} [role="cell"]`)
+        .first()
+        .innerText()
+        .catch(() => '')
+    ).trim()
+    const cityHeaderVisible = await page
+      .locator('[data-testid="raw-header"] [role="columnheader"]:has-text("City")')
+      .first()
+      .isVisible()
     ok(
       'desktop: raw city shown as sticky first column',
       firstCityText.length > 0 && cityHeaderVisible,

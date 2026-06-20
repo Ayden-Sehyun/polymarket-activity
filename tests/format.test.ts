@@ -88,6 +88,6 @@ describe('format helpers', () => {
     expect(accents[0]).toContain('25.331')
     expect(accents[2]).toContain('215.221')
     expect(accents[3]).toContain('16.439')
-    expect(accents[0]).toMatch(/^oklch\(.+ \/ 0\.9\)$/)
+    expect(accents[0]).toMatch(/^oklch\(.+ \/ 0\.45\)$/)
   })
 })

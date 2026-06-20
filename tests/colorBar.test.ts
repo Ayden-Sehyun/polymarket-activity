@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_COLOR_BAR_MODE,
-  persistColorBarMode,
-  readColorBarMode,
-} from '../src/colorBar'
+import { DEFAULT_COLOR_BAR_MODE, persistColorBarMode, readColorBarMode } from '../src/colorBar'
 
 function storageWith(value: string | null): Storage {
   const values = new Map<string, string>()

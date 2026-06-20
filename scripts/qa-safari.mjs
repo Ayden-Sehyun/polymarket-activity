@@ -34,9 +34,9 @@ const mockActivity = (index) => {
     size: 0.5 + index / 10,
     usdcSize: 0.005 + index / 1000,
     transactionHash: `0x${(10_000 + index).toString(16).padStart(64, '0')}`,
-    price: isConvert ? 0 : (index % 5 === 0 ? 0.999 : 0.001),
+    price: isConvert ? 0 : index % 5 === 0 ? 0.999 : 0.001,
     asset: `asset-${index}`,
-    side: isConvert ? '' : (index % 3 === 0 ? 'SELL' : 'BUY'),
+    side: isConvert ? '' : index % 3 === 0 ? 'SELL' : 'BUY',
     outcomeIndex: index % 2,
     title: isConvert
       ? `Highest temperature in ${city} on June 19?`
@@ -98,13 +98,16 @@ await context.route('https://gamma-api.polymarket.com/events/slug/**', async (ro
   })
 })
 
-await context.route(/https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-rpc\.publicnode\.com).*/, async (route) => {
-  await route.fulfill({
-    status: 200,
-    contentType: 'application/json',
-    body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x3b9aca00' }),
-  })
-})
+await context.route(
+  /https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-rpc\.publicnode\.com).*/,
+  async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x3b9aca00' }),
+    })
+  },
+)
 
 try {
   await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 15_000 })
@@ -115,7 +118,8 @@ try {
   const safeAreaMetadata = await page.evaluate(() => ({
     viewport: document.querySelector('meta[name="viewport"]')?.getAttribute('content') ?? '',
     themeColor: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') ?? '',
-    statusBarStyle: document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute('content') ?? '',
+    statusBarStyle:
+      document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')?.getAttribute('content') ?? '',
     htmlBackground: getComputedStyle(document.documentElement).backgroundColor,
     rootPaddingTop: getComputedStyle(document.querySelector('.app-root')).paddingTop,
     shellBorderTopWidth: getComputedStyle(document.querySelector('.app-shell')).borderTopWidth,
@@ -256,7 +260,8 @@ try {
     const viewport = { width: window.innerWidth, height: window.innerHeight }
     const hit = rect ? document.elementFromPoint(rect.left + 12, rect.top + 12) : null
     return {
-      open: document.querySelector('[data-testid="columns-summary"]')?.closest('details')?.hasAttribute('open') ?? false,
+      open:
+        document.querySelector('[data-testid="columns-summary"]')?.closest('details')?.hasAttribute('open') ?? false,
       display: panel ? getComputedStyle(panel).display : '',
       position: panel ? getComputedStyle(panel).position : '',
       rect: rect ? { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom } : null,
@@ -317,7 +322,10 @@ try {
   ok(
     'dense rows render with non-empty city/temp/time cells',
     rows.length > 0 &&
-      rows.every((row) => row.height <= 38 && row.city.length > 0 && row.temp.length > 0 && /^\d{1,2}:\d{2}\s[AP]M$/.test(row.time)),
+      rows.every(
+        (row) =>
+          row.height <= 38 && row.city.length > 0 && row.temp.length > 0 && /^\d{1,2}:\d{2}\s[AP]M$/.test(row.time),
+      ),
     JSON.stringify(rows[0]),
   )
 
@@ -332,5 +340,7 @@ try {
   await browser.close()
 }
 
-console.log(`\n========== SAFARI QA: ${failures.length === 0 ? 'ALL GREEN' : `${failures.length} FAILURE(S)`} ==========`)
+console.log(
+  `\n========== SAFARI QA: ${failures.length === 0 ? 'ALL GREEN' : `${failures.length} FAILURE(S)`} ==========`,
+)
 process.exit(failures.length ? 1 : 0)

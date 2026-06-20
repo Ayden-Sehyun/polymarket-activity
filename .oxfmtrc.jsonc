@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "trailingComma": "all",
+  "printWidth": 120,
+  "ignorePatterns": ["dist/**", "node_modules/**", "package-lock.json"],
+  // Oxfmt supports Svelte through svelte/compiler; this repo already depends on svelte.
+  "svelte": {
+    "indentScriptAndStyle": true,
+    "sortOrder": "scripts-markup-styles-options",
+  },
+}

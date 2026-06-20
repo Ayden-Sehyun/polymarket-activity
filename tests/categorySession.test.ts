@@ -48,7 +48,11 @@ describe('categorySession', () => {
       .fn()
       .mockResolvedValueOnce({ slug: 'unknown-one', category: null, tags: [{ label: 'NBA', slug: 'nba' }] })
       .mockRejectedValueOnce(new Error('gamma failed'))
-    const session = createCategorySession({ fetchEventMetadata, onChange: (state) => states.push(state), concurrency: 1 })
+    const session = createCategorySession({
+      fetchEventMetadata,
+      onChange: (state) => states.push(state),
+      concurrency: 1,
+    })
 
     session.hydrate([
       activity(1, { title: 'Unclassified one?', slug: 'unknown-one', eventSlug: 'unknown-one' }),
@@ -68,12 +72,16 @@ describe('categorySession', () => {
     const states: CategorySessionState[] = []
     let resolveMetadata: (value: { slug: string; category: string; tags: [] }) => void = () => {}
     const fetchEventMetadata = vi.fn(
-      async (slug: string) =>
+      async (_slug: string) =>
         new Promise<{ slug: string; category: string; tags: [] }>((resolve) => {
           resolveMetadata = resolve
         }),
     )
-    const session = createCategorySession({ fetchEventMetadata, onChange: (state) => states.push(state), concurrency: 1 })
+    const session = createCategorySession({
+      fetchEventMetadata,
+      onChange: (state) => states.push(state),
+      concurrency: 1,
+    })
     const row = activity(1, { title: 'Unclassified?', slug: 'unknown-one', eventSlug: 'unknown-one' })
     const queuedRow = activity(2, { title: 'Unclassified second?', slug: 'unknown-two', eventSlug: 'unknown-two' })
 

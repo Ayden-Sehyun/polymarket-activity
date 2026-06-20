@@ -26,6 +26,10 @@ npm run dev     # http://localhost:5173
 
 ```sh
 npm run build
+npm run lint
+npm run format:check
+npm run format
+npm run knip
 npm run test:unit
 npm run qa:contract
 npm run qa
@@ -37,10 +41,14 @@ npm run refactor:check
 npm run smoke -- <baseUrl> <wallet>
 ```
 
-`refactor:check` is the fast loop gate: build, unit module contracts, mocked
-browser contract, and network-error recovery. Run full `npm run qa` before
+`refactor:check` is the fast loop gate: dead-code scan, lint, format check,
+build, unit module contracts, mocked browser contract, and network-error recovery. Run full `npm run qa` before
 committing UI/fetching/filter changes. Run `npm run qa:safari` for WebKit mobile
 layout checks and Safari-like screenshots in `/tmp`.
+
+Linting and formatting use the Oxc family. Oxlint covers JS/TS and the
+`<script>` blocks in Svelte components; Oxfmt formats Svelte through
+`svelte/compiler`.
 
 Deploy:
 

@@ -22,7 +22,7 @@ export interface Activity {
   pseudonym: string
 }
 
-export interface EventTag {
+interface EventTag {
   label: string
   slug: string
 }
@@ -58,11 +58,7 @@ const BASE = 'https://data-api.polymarket.com/activity'
 const GAMMA_EVENT_BASE = 'https://gamma-api.polymarket.com/events/slug'
 const PUSD_TOKEN = '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
 const PUSD_DECIMALS = 6
-const POLYGON_RPC_URLS = [
-  'https://polygon.drpc.org',
-  'https://1rpc.io/matic',
-  'https://polygon-bor-rpc.publicnode.com',
-]
+const POLYGON_RPC_URLS = ['https://polygon.drpc.org', 'https://1rpc.io/matic', 'https://polygon-bor-rpc.publicnode.com']
 
 export async function fetchActivityPage(
   address: string,

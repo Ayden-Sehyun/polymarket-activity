@@ -52,7 +52,9 @@ export function patchActivityOptions(storage: Storage, patch: Partial<ActivityOp
 function normalizeActivityOptions(value: unknown): ActivityOptions {
   const source = isRecord(value) ? value : {}
   return {
-    type: TYPE_VALUES.has(source.type as ActivityType | '') ? (source.type as ActivityType | '') : DEFAULT_ACTIVITY_OPTIONS.type,
+    type: TYPE_VALUES.has(source.type as ActivityType | '')
+      ? (source.type as ActivityType | '')
+      : DEFAULT_ACTIVITY_OPTIONS.type,
     side: SIDE_VALUES.has(source.side as Side | '') ? (source.side as Side | '') : DEFAULT_ACTIVITY_OPTIONS.side,
     outcome: readableOptionString(source.outcome, DEFAULT_ACTIVITY_OPTIONS.outcome),
     category: readableOptionString(source.category, DEFAULT_ACTIVITY_OPTIONS.category),

@@ -1,0 +1,16 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "treatConfigHintsAsErrors": true,
+  // Used from src/index.css via Tailwind v4's `@import "tailwindcss"`.
+  "ignoreDependencies": ["tailwindcss"],
+  "workspaces": {
+    ".": {
+      "entry": ["scripts/*.mjs", "tests/**/*.test.ts"],
+      "project": ["src/**/*.{ts,svelte}", "tests/**/*.ts", "scripts/**/*.mjs", "*.config.ts"],
+      "svelte": true,
+      "vite": true,
+      "vitest": true,
+      "typescript": true,
+    },
+  },
+}

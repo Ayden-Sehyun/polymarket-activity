@@ -1,12 +1,6 @@
 import type { Activity } from './api'
 import type { CategoryMap } from './category'
-import {
-  cityLabel,
-  compactWeatherTitle,
-  displayType,
-  formatTimeShort,
-  txHref,
-} from './format'
+import { cityLabel, compactWeatherTitle, displayType, formatTimeShort, txHref } from './format'
 
 export type ActivityDisplayRow = {
   source: Activity

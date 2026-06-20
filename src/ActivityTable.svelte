@@ -62,9 +62,7 @@
 {/if}
 
 {#if empty && validAddress}
-  <div class="ui-empty grid place-items-center text-muted-foreground" data-testid="empty">
-    No rows.
-  </div>
+  <div class="ui-empty grid place-items-center text-muted-foreground" data-testid="empty">No rows.</div>
 {/if}
 {#if empty && !validAddress}
   <div class="ui-empty grid place-items-center text-center text-muted-foreground" data-testid="prompt">
@@ -93,7 +91,10 @@
 {/if}
 
 {#if !loading && validAddress && nextCursor}
-  <div class="load-more-row ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground" data-testid="load-more-row">
+  <div
+    class="load-more-row ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground"
+    data-testid="load-more-row"
+  >
     <button
       type="button"
       data-testid="load-more"
@@ -110,7 +111,12 @@
   <thead class="raw-head" data-testid="raw-header">
     <tr>
       {#each visibleColumnDefs as column}
-        <th role="columnheader" data-col={column.id} class={headerClassByColumn[column.id]} style={stickyStyleByColumn[column.id]}>{column.label}</th>
+        <th
+          role="columnheader"
+          data-col={column.id}
+          class={headerClassByColumn[column.id]}
+          style={stickyStyleByColumn[column.id]}>{column.label}</th
+        >
       {/each}
     </tr>
   </thead>
@@ -172,7 +178,11 @@
 {#snippet DecimalNumber(value: number, decimals: number)}
   {@const parts = formatDecimal(value, decimals)}
   {#if parts}
-    <span class="tabular-nums"><span>{parts.whole}</span><span>.</span><span>{parts.meaningful}</span><span class="text-[var(--faint)]">{parts.padding}</span></span>
+    <span class="tabular-nums"
+      ><span>{parts.whole}</span><span>.</span><span>{parts.meaningful}</span><span class="text-[var(--faint)]"
+        >{parts.padding}</span
+      ></span
+    >
   {:else}
     —
   {/if}
@@ -181,7 +191,11 @@
 {#snippet RawSkeleton()}
   <tr class="raw-row">
     {#each visibleColumnDefs as column}
-      <td data-col={column.id} class={`raw-cell ${column.id === firstVisibleColumn ? 'raw-accent-cell' : ''} ${stickyClassByColumn[column.id]}`} style={stickyStyleByColumn[column.id]}>
+      <td
+        data-col={column.id}
+        class={`raw-cell ${column.id === firstVisibleColumn ? 'raw-accent-cell' : ''} ${stickyClassByColumn[column.id]}`}
+        style={stickyStyleByColumn[column.id]}
+      >
         <span class="h-3 w-14 animate-pulse rounded-md bg-muted"></span>
       </td>
     {/each}

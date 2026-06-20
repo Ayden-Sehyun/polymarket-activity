@@ -108,14 +108,17 @@ Candidate: <branch/path/url>
 Validated At: <ISO timestamp>
 
 ### Commands
+
 - `npm run build`: PASS | FAIL
 - `npm run qa`: PASS | FAIL
 - `npm run qa:error`: PASS | FAIL
 - `npm run smoke -- ...`: PASS | FAIL | NOT_RUN
 
 ### Notes
+
 - <short notes on bundle size, framework/runtime changes, or residual risk>
 
 ### Failures
+
 - <file/test/behavior and concise reproduction, or "None">
 ```

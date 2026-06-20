@@ -123,5 +123,4 @@ describe('activitySession', () => {
     expect(states.at(-1)?.nextCursor).toEqual({ offset: 500 })
     session.dispose()
   })
-
 })

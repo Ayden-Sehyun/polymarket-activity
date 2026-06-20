@@ -62,6 +62,9 @@ describe('category helpers', () => {
     expect(filterRows([weatherYes, weatherNo, politicsNo], '', '', 'No', 'weather', {})).toEqual([weatherNo])
     expect(filterRows([weatherYes, weatherNo, politicsNo], 'TRADE', 'BUY', 'No', 'weather', {})).toEqual([weatherNo])
     expect(categoryForRow(weatherYes, {})).toEqual({ value: 'weather', label: 'Weather' })
-    expect(getCategoryOptions([weatherYes, politicsNo], {}).map((option) => option.value)).toEqual(['politics', 'weather'])
+    expect(getCategoryOptions([weatherYes, politicsNo], {}).map((option) => option.value)).toEqual([
+      'politics',
+      'weather',
+    ])
   })
 })

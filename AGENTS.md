@@ -13,6 +13,10 @@ bundle. Production is deployed to Cloudflare Pages at https://onedam.pages.dev.
 
 ```sh
 npm run dev                    # Vite dev server on http://localhost:5173
+npm run knip                   # dead-code/dependency/export scan
+npm run lint                   # Oxlint JS/TS + Svelte script lint
+npm run format:check           # Oxfmt formatting check
+npm run format                 # Oxfmt write
 npm run build                  # svelte-check + vite build
 npm run test:unit              # Vitest unit contracts for modules
 npm run qa:contract            # compact mocked-data browser refactor contract
@@ -32,7 +36,8 @@ npm run refactor:check
 ```
 
 Run the full `npm run qa` desktop + mobile sweep before committing UI, fetching,
-filtering, or sticky-column changes.
+filtering, or sticky-column changes. Oxlint covers Svelte `<script>` blocks, not
+Svelte template linting.
 
 Deploy:
 

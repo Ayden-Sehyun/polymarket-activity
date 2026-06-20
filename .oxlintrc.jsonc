@@ -1,0 +1,29 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["dist/**", "node_modules/**"],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2024": true,
+  },
+  "rules": {
+    "eqeqeq": "error",
+    "no-console": "off",
+  },
+  "overrides": [
+    {
+      "files": ["**/*.svelte"],
+      "rules": {
+        // Svelte bind:this assignments and `$:` dependency expressions are not plain JS patterns.
+        "no-unassigned-vars": "off",
+        "no-unused-expressions": "off",
+      },
+    },
+    {
+      "files": ["tests/**/*.ts"],
+      "rules": {
+        "vitest/require-mock-type-parameters": "off",
+      },
+    },
+  ],
+}
