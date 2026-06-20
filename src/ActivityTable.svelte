@@ -93,7 +93,7 @@
 {/if}
 
 {#if !loading && validAddress && nextCursor}
-  <div class="ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground">
+  <div class="load-more-row ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground" data-testid="load-more-row">
     <button
       type="button"
       data-testid="load-more"

@@ -105,12 +105,17 @@
   }
   html {
     @apply font-sans;
+    background: var(--page);
     font-feature-settings:
       'liga' 0, 'calt' 0, 'tnum' 1, 'zero' 1;
     -webkit-text-size-adjust: 100%;
   }
   body {
     @apply text-foreground;
+    background: var(--page);
+  }
+  #root {
+    min-height: 100%;
     background: var(--page);
   }
 }
@@ -126,6 +131,12 @@
 }
 
 @layer components {
+  .app-root {
+    box-sizing: border-box;
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+  }
+
   .top-status-row {
     position: relative;
     border-top: 1px solid var(--hairline);
@@ -269,6 +280,15 @@
     top: var(--column-menu-top, 0);
     max-height: min(70dvh, 360px);
     overflow-y: auto;
+  }
+
+  .load-more-row {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--card);
   }
 
   .raw-link-anchor {

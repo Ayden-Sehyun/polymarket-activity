@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createActivitySession, type ActivitySessionOptions, type ActivitySessionState } from '../src/activitySession'
 import type { ActivityPage } from '../src/api'
 import { OTHER_WALLET, WALLET, activity } from './fixtures'
@@ -19,20 +19,10 @@ const waitFor = async (assertion: () => void | Promise<void>) => {
   await assertion()
 }
 
-const windowTimers = () => ({
-  setInterval: vi.fn(() => 1),
-  clearInterval: vi.fn(),
-})
-
 const validQuery = (address = WALLET) => ({ address, validAddress: true })
 
 describe('activitySession', () => {
-  beforeEach(() => {
-    vi.stubGlobal('window', windowTimers())
-  })
-
   afterEach(() => {
-    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
@@ -131,27 +121,6 @@ describe('activitySession', () => {
     expect(states.at(-1)?.rows.map((row) => row.asset)).toContain('asset-99')
     expect(states.at(-1)?.rows.map((row) => row.asset)).toContain('asset-50')
     expect(states.at(-1)?.nextCursor).toEqual({ offset: 500 })
-    session.dispose()
-  })
-
-  it('updates and disables the auto-refresh cadence', async () => {
-    const timers = windowTimers()
-    vi.stubGlobal('window', timers)
-    const states: ActivitySessionState[] = []
-    const fetchPage = vi.fn<ActivitySessionOptions['fetchPage']>(async () => ({ items: [activity(1)] }))
-    const session = createActivitySession({ fetchPage, onChange: (state) => states.push(state) })
-
-    session.setQuery(validQuery())
-    await waitFor(() => expect(states.at(-1)?.rows).toHaveLength(1))
-
-    expect(timers.setInterval).toHaveBeenLastCalledWith(expect.any(Function), 15_000)
-    session.setRefreshIntervalMs(30_000)
-    expect(timers.clearInterval).toHaveBeenCalledWith(1)
-    expect(timers.setInterval).toHaveBeenLastCalledWith(expect.any(Function), 30_000)
-
-    session.setRefreshIntervalMs(0)
-    expect(timers.clearInterval).toHaveBeenCalledWith(1)
-    expect(timers.setInterval).toHaveBeenCalledTimes(2)
     session.dispose()
   })
 

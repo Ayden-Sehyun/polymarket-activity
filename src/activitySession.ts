@@ -32,11 +32,8 @@ export type ActivitySessionOptions = {
     pageSize?: number,
   ) => Promise<ActivityPage>
   onChange: (state: ActivitySessionState) => void
-  refreshIntervalMs?: number
   initialPageSize?: number
 }
-
-const DEFAULT_REFRESH_INTERVAL_MS = 15_000
 
 export function createInitialActivitySessionState(): ActivitySessionState {
   return {
@@ -57,7 +54,6 @@ export function createActivitySession(options: ActivitySessionOptions) {
 class ActivitySession {
   private readonly fetchPage: ActivitySessionOptions['fetchPage']
   private readonly onChange: ActivitySessionOptions['onChange']
-  private refreshIntervalMs: number
   private readonly initialPageSize: number
   private state = createInitialActivitySessionState()
   private pages: Activity[][] = []
@@ -66,12 +62,10 @@ class ActivitySession {
   private requestSeq = 0
   private activeController: AbortController | null = null
   private refreshController: AbortController | null = null
-  private refreshTimer: number | undefined
 
   constructor(options: ActivitySessionOptions) {
     this.fetchPage = options.fetchPage
     this.onChange = options.onChange
-    this.refreshIntervalMs = options.refreshIntervalMs ?? DEFAULT_REFRESH_INTERVAL_MS
     this.initialPageSize = options.initialPageSize ?? INITIAL_PAGE_SIZE
     this.emit()
   }
@@ -87,12 +81,6 @@ class ActivitySession {
   retry() {
     if (this.pages.length > 0) void this.loadNext(true)
     else void this.resetAndFetch()
-  }
-
-  setRefreshIntervalMs(refreshIntervalMs: number) {
-    if (this.refreshIntervalMs === refreshIntervalMs) return
-    this.refreshIntervalMs = refreshIntervalMs
-    if (this.refreshTimer !== undefined) this.startRefreshTimer(this.requestSeq)
   }
 
   async loadNext(asNextPage = true, seq = this.requestSeq) {
@@ -148,16 +136,11 @@ class ActivitySession {
   dispose() {
     this.activeController?.abort()
     this.refreshController?.abort()
-    if (this.refreshTimer !== undefined) window.clearInterval(this.refreshTimer)
   }
 
   private async resetAndFetch() {
     this.activeController?.abort()
     this.refreshController?.abort()
-    if (this.refreshTimer !== undefined) {
-      window.clearInterval(this.refreshTimer)
-      this.refreshTimer = undefined
-    }
     const seq = ++this.requestSeq
     this.pages = []
     this.patch({
@@ -180,16 +163,6 @@ class ActivitySession {
 
     this.patch({ loading: true })
     await this.fetchInitialRows(seq)
-    if (seq === this.requestSeq) this.startRefreshTimer(seq)
-  }
-
-  private startRefreshTimer(seq: number) {
-    if (this.refreshTimer !== undefined) window.clearInterval(this.refreshTimer)
-    this.refreshTimer = undefined
-    if (this.refreshIntervalMs <= 0) return
-    this.refreshTimer = window.setInterval(() => {
-      void this.refreshLatest(seq)
-    }, this.refreshIntervalMs)
   }
 
   private async fetchInitialRows(seq = this.requestSeq) {

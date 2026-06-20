@@ -31,6 +31,7 @@ npm run qa:contract
 npm run qa
 npm run qa:desktop
 npm run qa:mobile
+npm run qa:safari
 npm run qa:error
 npm run refactor:check
 npm run smoke -- <baseUrl> <wallet>
@@ -38,7 +39,8 @@ npm run smoke -- <baseUrl> <wallet>
 
 `refactor:check` is the fast loop gate: build, unit module contracts, mocked
 browser contract, and network-error recovery. Run full `npm run qa` before
-committing UI/fetching/filter changes.
+committing UI/fetching/filter changes. Run `npm run qa:safari` for WebKit mobile
+layout checks and Safari-like screenshots in `/tmp`.
 
 Deploy:
 

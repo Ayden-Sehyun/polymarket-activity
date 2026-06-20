@@ -88,6 +88,9 @@
   let uiQueryKey = ''
   let now = Date.now()
   let clockTimer: number | undefined
+  let autoRefreshTimer: number | undefined
+  let syncedAutoRefreshMs = Number.NaN
+  let syncedAutoRefreshEnabled = false
   let parentRef: HTMLDivElement
   let activityTableRef: ActivityTable
   let measureRaf: number | undefined
@@ -122,7 +125,7 @@
     document.title = validAddress ? `@${titleIdentity} on Polymarket` : 'Polymarket Activity'
   }
   $: categorySession?.hydrate(allRows)
-  $: activitySession?.setRefreshIntervalMs(Number(autoRefreshMs))
+  $: syncAutoRefreshTimer(Number(autoRefreshMs), validAddress && activitySession !== null && balanceSession !== null)
   $: if (activitySession) {
     const nextUiQueryKey = `${address.toLowerCase()}|${validAddress}`
     if (nextUiQueryKey !== uiQueryKey) {
@@ -183,6 +186,7 @@
     categorySession?.dispose()
     if (measureRaf !== undefined) window.cancelAnimationFrame(measureRaf)
     if (clockTimer !== undefined) window.clearInterval(clockTimer)
+    if (autoRefreshTimer !== undefined) window.clearInterval(autoRefreshTimer)
     window.removeEventListener('resize', scheduleStickyMeasure)
     window.removeEventListener('focus', refreshFromAmbientTrigger)
     window.removeEventListener('online', refreshFromAmbientTrigger)
@@ -274,6 +278,18 @@
     balanceSession?.refresh()
   }
 
+  function syncAutoRefreshTimer(refreshIntervalMs: number, enabled: boolean) {
+    if (syncedAutoRefreshMs === refreshIntervalMs && syncedAutoRefreshEnabled === enabled) return
+    if (autoRefreshTimer !== undefined) {
+      window.clearInterval(autoRefreshTimer)
+      autoRefreshTimer = undefined
+    }
+    syncedAutoRefreshMs = refreshIntervalMs
+    syncedAutoRefreshEnabled = enabled
+    if (!enabled || refreshIntervalMs <= 0) return
+    autoRefreshTimer = window.setInterval(refreshNow, refreshIntervalMs)
+  }
+
   function refreshFromAmbientTrigger() {
     if (document.visibilityState === 'hidden') return
     const nextRefreshAt = Date.now()
@@ -289,7 +305,7 @@
 
 </script>
 
-<div class="grid h-[100dvh] min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] font-mono text-foreground">
+<div class="app-root grid min-w-0 grid-rows-[auto_1fr] overflow-hidden bg-[var(--page)] font-mono text-foreground">
   <header class="app-shell sticky top-0 z-30 mx-auto border-x border-hairline bg-card" style={`width: ${shellWidth}`}>
     <div class="flex flex-col">
       <div class="top-status-row flex overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

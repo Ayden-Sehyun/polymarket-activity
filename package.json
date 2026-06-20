@@ -10,6 +10,7 @@
     "qa": "node scripts/qa.mjs",
     "qa:desktop": "node scripts/qa.mjs desktop",
     "qa:mobile": "node scripts/qa.mjs mobile",
+    "qa:safari": "node scripts/qa-safari.mjs",
     "qa:contract": "node scripts/qa-refactor-contract.mjs",
     "qa:error": "node scripts/qa-error.mjs",
     "smoke": "node scripts/smoke-prod.mjs",

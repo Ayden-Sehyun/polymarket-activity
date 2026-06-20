@@ -19,6 +19,7 @@ npm run qa:contract            # compact mocked-data browser refactor contract
 npm run qa                     # desktop + mobile Playwright feature sweep
 npm run qa:desktop             # desktop sweep only
 npm run qa:mobile              # mobile sweep only
+npm run qa:safari              # WebKit mobile layout probe for Safari-like bugs
 npm run qa:error               # network-kill/error/retry probe
 npm run refactor:check         # fast refactor loop gate
 npm run smoke -- <url> <wallet> # production smoke probe

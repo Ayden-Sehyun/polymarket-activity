@@ -230,6 +230,42 @@ try {
   const afterTotal = Number(await page.locator('[data-testid="status"]').getAttribute('data-total'))
   ok('load more appends unique rows without duplicate key warnings', afterTotal > beforeTotal, `${beforeTotal} -> ${afterTotal}`)
 
+  const autoContext = await browser.newContext({ viewport: { width: 980, height: 760 } })
+  await autoContext.addInitScript(() => {
+    const realSetInterval = window.setInterval.bind(window)
+    window.setInterval = (handler, timeout, ...args) => realSetInterval(handler, Number(timeout) >= 5000 ? 60 : timeout, ...args)
+    window.localStorage.setItem('activity-options', JSON.stringify({ autoRefreshMs: '5000', category: '' }))
+  })
+  let autoActivityCalls = 0
+  let autoBalanceCalls = 0
+  await autoContext.route('https://data-api.polymarket.com/activity**', async (route) => {
+    const url = new URL(route.request().url())
+    autoActivityCalls += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(filterServerRows(url.searchParams.get('limit') === '50' ? previewRows : historyRows, url)),
+    })
+  })
+  await autoContext.route(/https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-rpc\.publicnode\.com).*/, async (route) => {
+    autoBalanceCalls += 1
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x3b9aca00' }),
+    })
+  })
+  const autoPage = await autoContext.newPage()
+  await autoPage.goto(`${APP_URL}/?address=${DEFAULT}`)
+  await autoPage.waitForSelector(ROW, { timeout: 12000 })
+  await sleep(250)
+  ok(
+    'auto refresh cadence refreshes activity and pUSD',
+    autoActivityCalls >= 2 && autoBalanceCalls >= 2,
+    `activity=${autoActivityCalls}, pUSD=${autoBalanceCalls}`,
+  )
+  await autoContext.close()
+
   const realConsoleIssues = consoleIssues.filter((issue) => !issue.includes('React DevTools'))
   ok('no browser console errors or warnings', realConsoleIssues.length === 0, realConsoleIssues[0] ?? '')
 } catch (err) {
