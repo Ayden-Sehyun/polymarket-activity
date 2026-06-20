@@ -20,9 +20,10 @@ try {
   await page.waitForSelector(ROW, { timeout: 20000 })
   await page.locator('[data-testid="filter-category"]').selectOption('')
 
-  // block the API, then force a fresh query (filter change = new queryKey)
+  // block the API, then force a fresh request
   await page.route('https://data-api.polymarket.com/**', (route) => route.abort())
   await page.locator('[data-testid="filter-type"]').selectOption('REDEEM')
+  await page.locator('[data-testid="manual-refresh"]').click()
   await page.waitForSelector('[data-testid="error"]', { timeout: 15000 })
   const msg = (await page.locator('[data-testid="error"]').innerText()).trim()
   ok('error banner shown', msg.length > 0, JSON.stringify(msg.slice(0, 80)))
@@ -32,6 +33,7 @@ try {
   await page.unroute('https://data-api.polymarket.com/**')
   await page.locator('[data-testid="error"] button').click()
   await page.waitForSelector(ROW, { timeout: 20000 })
+  await page.waitForFunction(() => !document.querySelector('[data-testid="error"]'), undefined, { timeout: 15000 })
   await page.waitForFunction(
     () => {
       const rows = [...document.querySelectorAll('[data-testid="raw-row"]')]

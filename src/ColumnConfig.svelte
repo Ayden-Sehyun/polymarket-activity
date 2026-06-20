@@ -9,7 +9,7 @@
     toggleVisible: ColumnId
   }>()
   const COLUMN_MENU_ITEM_CLASS =
-    'flex cursor-pointer items-center gap-2 border-b border-hairline px-3 py-2 font-mono text-[11px] uppercase leading-4 last:border-b-0 hover:bg-secondary'
+    'flex items-center gap-2 border-b border-hairline px-3 py-2 font-mono text-[11px] uppercase leading-4 last:border-b-0 hover:bg-secondary'
   type ColumnMenuKind = 'sticky' | 'visible'
 
   function handleColumnMenuToggle(event: Event) {
@@ -39,7 +39,7 @@
   <details class="column-menu relative flex shrink-0 border-r border-hairline" on:toggle={handleColumnMenuToggle}>
     <summary
       data-testid={kind === 'sticky' ? 'sticky-summary' : 'columns-summary'}
-      class={`ui-control flex ${kind === 'sticky' ? 'min-w-36' : 'min-w-28'} cursor-pointer list-none items-center bg-card pr-3 text-foreground hover:bg-secondary [&::-webkit-details-marker]:hidden`}
+      class={`ui-control flex ${kind === 'sticky' ? 'min-w-36' : 'min-w-28'} list-none items-center bg-card pr-3 text-foreground hover:bg-secondary [&::-webkit-details-marker]:hidden`}
     >
       {kind === 'sticky' ? columnLayout.stickySummary : columnLayout.visibleSummary}
     </summary>

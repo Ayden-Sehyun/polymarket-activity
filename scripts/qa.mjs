@@ -169,15 +169,10 @@ async function runSweep(mode) {
   const mockPage = await context.newPage()
   let mockActivityCalls = 0
   const firstPreview = Array.from({ length: 50 }, (_, i) => mockActivity(i))
-  const weatherRow = mockActivity(999, {
-    title: 'Will the highest temperature in Miami be 90°F on June 20?',
-    slug: 'mock-weather-miami-90',
-    eventSlug: 'mock-weather-miami-90',
-  })
   await mockPage.route('https://data-api.polymarket.com/activity**', async (route) => {
     mockActivityCalls += 1
     const url = new URL(route.request().url())
-    const rows = url.searchParams.get('limit') === '50' ? firstPreview : [weatherRow]
+    const rows = url.searchParams.get('limit') === '50' ? firstPreview : []
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
@@ -185,25 +180,21 @@ async function runSweep(mode) {
     })
   })
   await mockPage.goto(`${APP_URL}/?address=${DEFAULT}`)
-  await mockPage
-    .waitForFunction(() => document.querySelectorAll('[data-testid="raw-row"]').length > 0, undefined, { timeout: 12000 })
-    .catch(() => {})
-  const autoFillState = await mockPage.evaluate(() => ({
+  await mockPage.waitForSelector('[data-testid="empty"]', { timeout: 12000 })
+  const loadedFilterState = await mockPage.evaluate(() => ({
     selectedCategory: document.querySelector('[data-testid="filter-category"]')?.value ?? '',
     rowCount: document.querySelectorAll('[data-testid="raw-row"]').length,
     empty: !!document.querySelector('[data-testid="empty"]'),
-    firstCity: document.querySelector('[data-testid="raw-row"] [data-col="city"]')?.textContent?.trim() ?? '',
     shown: document.querySelector('[data-testid="status"]')?.getAttribute('data-shown') ?? '',
     total: document.querySelector('[data-testid="status"]')?.getAttribute('data-total') ?? '',
   }))
   ok(
-    'default Weather auto-loads past an empty preview',
-    mockActivityCalls >= 2 &&
-      autoFillState.selectedCategory === 'weather' &&
-      autoFillState.rowCount === 1 &&
-      autoFillState.firstCity === 'Miami' &&
-      !autoFillState.empty,
-    `calls=${mockActivityCalls}, rows=${autoFillState.rowCount}, shown=${autoFillState.shown}/${autoFillState.total}`,
+    'default Weather filters only loaded rows',
+    mockActivityCalls === 1 &&
+      loadedFilterState.selectedCategory === 'weather' &&
+      loadedFilterState.rowCount === 0 &&
+      loadedFilterState.empty,
+    `calls=${mockActivityCalls}, rows=${loadedFilterState.rowCount}, shown=${loadedFilterState.shown}/${loadedFilterState.total}`,
   )
   await mockPage.close()
 
@@ -473,8 +464,8 @@ async function runSweep(mode) {
   await sleep(400)
   let rows = await visibleRows()
   ok(
-    'type filter = Redeem (server-side)',
-    rows.length > 0 && rows.every((r) => r.type === 'Redeem') && apiCalls.some((c) => c.type === 'REDEEM'),
+    'type filter = Redeem (client-side)',
+    rows.length > 0 && rows.every((r) => r.type === 'Redeem'),
     `${rows.length} visible, types: ${[...new Set(rows.map((r) => r.type))].join(',')}`,
   )
   await typeSelect.selectOption('CONVERSION')
@@ -497,8 +488,8 @@ async function runSweep(mode) {
   await sleep(900)
   rows = await visibleRows()
   ok(
-    'side filter = Sell (server-side)',
-    rows.length > 0 && rows.every((r) => r.side === 'Sell') && apiCalls.some((c) => c.side === 'SELL'),
+    'side filter = Sell (client-side)',
+    rows.length > 0 && rows.every((r) => r.side === 'Sell'),
     `${rows.length} visible, sides: ${[...new Set(rows.map((r) => r.side))].join(',')}`,
   )
 

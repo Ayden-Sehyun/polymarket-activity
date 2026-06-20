@@ -1,25 +1,14 @@
-export const COLUMN_DEFS = [
-  { id: 'city', label: 'City', align: 'left' },
-  { id: 'temp', label: 'Temp', align: 'right' },
-  { id: 'date', label: 'Date', align: 'right' },
-  { id: 'side', label: 'Side', align: 'left' },
-  { id: 'type', label: 'Type', align: 'left' },
-  { id: 'outcome', label: 'Outcome', align: 'left' },
-  { id: 'price', label: 'Price', align: 'right' },
-  { id: 'shares', label: 'Shares', align: 'right' },
-  { id: 'amount', label: 'Amount pUSD', align: 'right' },
-  { id: 'time', label: 'Time', align: 'right' },
-  { id: 'tx', label: 'Tx', align: 'right' },
-] as const
+import { ACTIVITY_COLUMNS, type ColumnId } from './activityColumns'
 
-export type ColumnId = (typeof COLUMN_DEFS)[number]['id']
+export type { ColumnId } from './activityColumns'
+
 export type ColumnState = {
   visibleColumns: ColumnId[]
   stickyColumns: ColumnId[]
 }
 export type ColumnLayout = {
   visibleByColumn: Record<ColumnId, boolean>
-  visibleColumnDefs: typeof COLUMN_DEFS[number][]
+  visibleColumnDefs: typeof ACTIVITY_COLUMNS[number][]
   firstVisibleColumn: ColumnId | undefined
   activeStickyColumns: ColumnId[]
   stickyByColumn: Record<ColumnId, boolean>
@@ -44,7 +33,7 @@ const VISIBLE_STORAGE_KEY = 'activity-visible-columns'
 const COLUMN_SCHEMA_STORAGE_KEY = 'activity-column-schema-version'
 const CURRENT_COLUMN_SCHEMA_VERSION = '2'
 const SCHEMA_ADDED_DEFAULT_VISIBLE_COLUMNS: ColumnId[] = ['shares']
-const ALL_COLUMN_IDS = COLUMN_DEFS.map((column) => column.id)
+const ALL_COLUMN_IDS = ACTIVITY_COLUMNS.map((column) => column.id)
 const DEFAULT_STICKY_COLUMNS: ColumnId[] = ['city']
 
 export function defaultColumnState(): ColumnState {
@@ -99,25 +88,25 @@ export function toggleVisibleColumn(state: ColumnState, column: ColumnId): Colum
 
 export function getColumnLayout(state: ColumnState, stickyOffsets: Partial<Record<ColumnId, number>>): ColumnLayout {
   const visibleByColumn = booleanByColumn(state.visibleColumns)
-  const visibleColumnDefs = COLUMN_DEFS.filter((column) => visibleByColumn[column.id])
+  const visibleColumnDefs = ACTIVITY_COLUMNS.filter((column) => visibleByColumn[column.id])
   const firstVisibleColumn = visibleColumnDefs[0]?.id
   const activeStickyColumns = state.stickyColumns.filter((column) => visibleByColumn[column])
   const stickyByColumn = booleanByColumn(activeStickyColumns)
-  const stickyClassByColumn = COLUMN_DEFS.reduce(
+  const stickyClassByColumn = ACTIVITY_COLUMNS.reduce(
     (out, column) => {
       out[column.id] = stickyByColumn[column.id] ? 'raw-sticky-cell' : ''
       return out
     },
     {} as Record<ColumnId, string>,
   )
-  const stickyStyleByColumn = COLUMN_DEFS.reduce(
+  const stickyStyleByColumn = ACTIVITY_COLUMNS.reduce(
     (out, column) => {
       out[column.id] = stickyByColumn[column.id] ? `left: ${stickyOffsets[column.id] ?? 0}px` : ''
       return out
     },
     {} as Record<ColumnId, string>,
   )
-  const headerClassByColumn = COLUMN_DEFS.reduce(
+  const headerClassByColumn = ACTIVITY_COLUMNS.reduce(
     (out, column) => {
       out[column.id] = joinClasses(column.align === 'right' ? 'text-right tabular-nums' : '', stickyClassByColumn[column.id])
       return out
@@ -139,8 +128,8 @@ export function getColumnLayout(state: ColumnState, stickyOffsets: Partial<Recor
         ? 'None Sticky'
         : `Sticky: ${activeStickyColumns.map((column) => columnLabel(column)).join(' + ')}`,
     visibleSummary:
-      state.visibleColumns.length === COLUMN_DEFS.length ? 'Cols: All' : `Cols: ${state.visibleColumns.length}/${COLUMN_DEFS.length}`,
-    menuItems: COLUMN_DEFS.map((column) => ({
+      state.visibleColumns.length === ACTIVITY_COLUMNS.length ? 'Cols: All' : `Cols: ${state.visibleColumns.length}/${ACTIVITY_COLUMNS.length}`,
+    menuItems: ACTIVITY_COLUMNS.map((column) => ({
       id: column.id,
       label: column.label,
       visibleChecked: visibleByColumn[column.id],
@@ -155,7 +144,7 @@ export function measureStickyOffsets(table: HTMLTableElement | undefined, sticky
   if (!table) return {}
   let left = 0
   const next: Partial<Record<ColumnId, number>> = {}
-  for (const column of COLUMN_DEFS) {
+  for (const column of ACTIVITY_COLUMNS) {
     if (!stickyByColumn[column.id]) continue
     next[column.id] = left
     const header = table.querySelector<HTMLElement>(`[data-col="${column.id}"]`)
@@ -189,7 +178,7 @@ function orderColumns(columns: ColumnId[]) {
 
 function booleanByColumn(columns: ColumnId[]) {
   const selected = new Set(columns)
-  return COLUMN_DEFS.reduce(
+  return ACTIVITY_COLUMNS.reduce(
     (out, column) => {
       out[column.id] = selected.has(column.id)
       return out
@@ -199,7 +188,7 @@ function booleanByColumn(columns: ColumnId[]) {
 }
 
 function columnLabel(column: ColumnId) {
-  return COLUMN_DEFS.find((def) => def.id === column)?.label ?? column
+  return ACTIVITY_COLUMNS.find((def) => def.id === column)?.label ?? column
 }
 
 function joinClasses(...classes: string[]) {

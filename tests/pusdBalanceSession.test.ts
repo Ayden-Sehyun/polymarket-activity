@@ -74,6 +74,30 @@ describe('pusdBalanceSession', () => {
     session.dispose()
   })
 
+  it('refreshes without clearing the current balance while fetching', async () => {
+    const states: PusdBalanceState[] = []
+    let resolveBalance: (balance: number) => void = () => {}
+    const fetchBalance = vi.fn(
+      async () =>
+        new Promise<number>((resolve) => {
+          resolveBalance = resolve
+        }),
+    )
+    const session = createPusdBalanceSession({ fetchBalance, onChange: (state) => states.push(state) })
+
+    session.setAddress(WALLET, true)
+    await waitFor(() => expect(fetchBalance).toHaveBeenCalledTimes(1))
+    resolveBalance(61.79)
+    await waitFor(() => expect(states.at(-1)).toEqual({ balance: 61.79, fetching: false }))
+
+    session.refresh()
+    await waitFor(() => expect(fetchBalance).toHaveBeenCalledTimes(2))
+    expect(states.at(-1)).toEqual({ balance: 61.79, fetching: true })
+    resolveBalance(62.25)
+    await waitFor(() => expect(states.at(-1)).toEqual({ balance: 62.25, fetching: false }))
+    session.dispose()
+  })
+
   it('does not emit after dispose', async () => {
     const states: PusdBalanceState[] = []
     let resolveBalance: (balance: number) => void = () => {}

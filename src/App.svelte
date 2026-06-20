@@ -19,7 +19,6 @@
     type PusdBalanceState,
   } from './pusdBalanceSession'
   import {
-    areCategoriesSettled,
     DEFAULT_CATEGORY,
     filterRows,
     getCategoryOptions,
@@ -57,6 +56,13 @@
     { value: 'MERGE', label: 'Merge' },
     { value: 'REWARD', label: 'Reward' },
   ]
+  const AUTO_REFRESH_OPTIONS = [
+    { value: '0', label: 'Auto Refresh: Off' },
+    { value: '5000', label: 'Auto Refresh: 5s' },
+    { value: '15000', label: 'Auto Refresh: 15s' },
+    { value: '30000', label: 'Auto Refresh: 30s' },
+    { value: '60000', label: 'Auto Refresh: 60s' },
+  ]
   const addressFromUrl = () => new URLSearchParams(window.location.search).get('address')?.trim() ?? ''
 
   let address = addressFromUrl()
@@ -79,7 +85,7 @@
   let parentRef: HTMLDivElement
   let activityTableRef: ActivityTable
   let measureRaf: number | undefined
-  let autoFillKey = ''
+  let autoRefreshMs = '15000'
   let shellWidth = '100%'
 
   $: validAddress = ADDRESS_RE.test(address)
@@ -87,10 +93,7 @@
   $: outcomes = [...new Set(allRows.map((row) => row.outcome).filter(Boolean))].sort()
   $: eventCategories = categoryState.categories
   $: categoryOptions = getCategoryOptions(allRows, eventCategories)
-  $: rows = filterRows(allRows, outcome, category, eventCategories)
-  $: clientFilterActive = Boolean(outcome || category)
-  $: categoriesSettled = areCategoriesSettled(allRows, eventCategories)
-  $: autoFillKey = `${address.toLowerCase()}|${type}|${side}|${outcome}|${category}`
+  $: rows = filterRows(allRows, type, side, outcome, category, eventCategories)
   $: columnLayout = getColumnLayout(columnState, stickyOffsets)
   $: visibleKey = columnState.visibleColumns.join('|')
   $: stickyKey = columnLayout.activeStickyColumns.join('|')
@@ -102,23 +105,22 @@
   }
   $: statusText = activityState.lastRefreshAt === null
     ? 'REFRESHING'
-    : `${Math.max(0, Math.floor((now - activityState.lastRefreshAt) / 1000))}S SINCE REFRESH`
+    : `${Math.max(0, Math.floor((now - activityState.lastRefreshAt) / 1000))}S SINCE LAST REFRESH`
   $: statusCursor = activityState.nextCursor ? 'more' : validAddress ? 'end' : ''
-  $: filteredRowsPending = clientFilterActive && allRows.length > 0 && rows.length === 0 && (!categoriesSettled || activityState.autoFilling)
-  $: empty = !activityState.loading && !filteredRowsPending && rows.length === 0
+  $: empty = !activityState.loading && rows.length === 0
   $: profile = getProfile(allRows)
   $: categorySession?.hydrate(allRows)
+  $: activitySession?.setRefreshIntervalMs(Number(autoRefreshMs))
   $: if (activitySession) {
-    const nextUiQueryKey = `${address.toLowerCase()}|${type}|${side}|${validAddress}`
+    const nextUiQueryKey = `${address.toLowerCase()}|${validAddress}`
     if (nextUiQueryKey !== uiQueryKey) {
       uiQueryKey = nextUiQueryKey
       showTop = false
       if (parentRef) parentRef.scrollTop = 0
     }
-    activitySession.setQuery({ address, type, side, validAddress })
+    activitySession.setQuery({ address, validAddress })
     balanceSession?.setAddress(address, validAddress)
   }
-  $: void activitySession?.maybeAutoFillFilteredRows(autoFillKey, clientFilterActive, rows.length)
 
   onMount(() => {
     columnState = readColumnState(window.localStorage)
@@ -141,7 +143,7 @@
         categoryState = next
       },
     })
-    activitySession.setQuery({ address, type, side, validAddress })
+    activitySession.setQuery({ address, validAddress })
     balanceSession.setAddress(address, validAddress)
     categorySession.hydrate(allRows)
     clockTimer = window.setInterval(() => {
@@ -208,6 +210,11 @@
     activitySession?.retry()
   }
 
+  function refreshNow() {
+    void activitySession?.refreshLatest()
+    balanceSession?.refresh()
+  }
+
   function backToTop() {
     if (parentRef) parentRef.scrollTop = 0
     showTop = false
@@ -231,6 +238,26 @@
               PUSD --
             {/if}
           </span>
+          <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
+            <select
+              bind:value={autoRefreshMs}
+              data-testid="auto-refresh"
+              aria-label="Auto refresh cadence"
+              class="pill-select ui-top-cell shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary"
+            >
+              {#each AUTO_REFRESH_OPTIONS as option}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+          </label>
+          <button
+            type="button"
+            class="ui-top-cell flex shrink-0 items-center border-r border-hairline bg-card font-mono uppercase text-foreground transition-colors hover:bg-secondary focus-visible:bg-secondary"
+            data-testid="manual-refresh"
+            on:click={refreshNow}
+          >
+            Refresh
+          </button>
           <p
             class="ui-top-cell flex shrink-0 items-center border-r border-hairline font-mono uppercase text-[var(--secondary-text)]"
             data-testid="status"
@@ -250,21 +277,21 @@
       {#if validAddress}
         <div data-testid="filter-row" class="flex overflow-x-auto border-b border-hairline [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={type} data-testid="filter-type" aria-label="Activity type" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={type} data-testid="filter-type" aria-label="Activity type" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
             {#each TYPE_OPTIONS as option}
               <option value={option.value}>{option.label}</option>
             {/each}
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={side} data-testid="filter-side" aria-label="Trade side" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={side} data-testid="filter-side" aria-label="Trade side" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
             <option value="">Buy + Sell</option>
             <option value="BUY">Buy</option>
             <option value="SELL">Sell</option>
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={outcome} data-testid="filter-outcome" aria-label="Outcome" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={outcome} data-testid="filter-outcome" aria-label="Outcome" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
             <option value="">Yes + No</option>
             {#each outcomes as option}
               <option value={option}>{option}</option>
@@ -272,7 +299,7 @@
             </select>
           </label>
           <label class="flex shrink-0 items-center border-r border-hairline text-[var(--secondary-text)]">
-            <select bind:value={category} data-testid="filter-category" aria-label="Market category" class="pill-select ui-control shrink-0 cursor-pointer rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
+            <select bind:value={category} data-testid="filter-category" aria-label="Market category" class="pill-select ui-control shrink-0 rounded-none border-0 bg-card font-mono text-foreground outline-none transition-colors hover:bg-secondary focus-visible:bg-secondary">
             <option value="">All Categories</option>
             {#each categoryOptions as option}
               <option value={option.value}>{option.label}</option>
@@ -319,7 +346,6 @@
           {columnState}
           {stickyOffsets}
           loading={activityState.loading}
-          {filteredRowsPending}
           {empty}
           {validAddress}
           nextCursor={Boolean(activityState.nextCursor)}

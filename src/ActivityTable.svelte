@@ -9,14 +9,13 @@
     type ColumnId,
     type ColumnState,
   } from './columnState'
-  import { formatDecimal, outcomeClass, sideClass } from './format'
+  import { formatDecimal } from './format'
 
   export let rows: Activity[] = []
   export let eventCategories: CategoryMap = {}
   export let columnState: ColumnState
   export let stickyOffsets: Partial<Record<ColumnId, number>> = {}
   export let loading = false
-  export let filteredRowsPending = false
   export let empty = false
   export let validAddress = false
   export let nextCursor = false
@@ -34,7 +33,6 @@
   let tableRef: HTMLTableElement
 
   $: columnLayout = getColumnLayout(columnState, stickyOffsets)
-  $: visibleByColumn = columnLayout.visibleByColumn
   $: visibleColumnDefs = columnLayout.visibleColumnDefs
   $: firstVisibleColumn = columnLayout.firstVisibleColumn
   $: stickyClassByColumn = columnLayout.stickyClassByColumn
@@ -49,7 +47,7 @@
   }
 </script>
 
-{#if loading || filteredRowsPending}
+{#if loading}
   <table bind:this={tableRef} class="raw-table" data-testid="raw-loading">
     {@render RawHeader()}
     <tbody>
@@ -91,7 +89,7 @@
   </table>
 {/if}
 
-{#if !loading && !filteredRowsPending && validAddress && nextCursor}
+{#if !loading && validAddress && nextCursor}
   <div class="ui-message grid place-items-center border-t border-hairline py-4 text-muted-foreground">
     <button
       type="button"
@@ -116,72 +114,55 @@
 {/snippet}
 
 {#snippet RawCells(row: ActivityDisplayRow)}
-  {#if visibleByColumn.city}
-    <td role="cell" data-col="city" class={`raw-cell font-mono text-foreground ${firstVisibleColumn === 'city' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.city}`} style={stickyStyleByColumn.city} title={row.title}>
-      {row.city}
+  {#each visibleColumnDefs as column}
+    <td
+      role="cell"
+      data-col={column.id}
+      data-testid={column.id === 'type' ? 'cell-type' : undefined}
+      class={`raw-cell ${column.cellClass(row)} ${firstVisibleColumn === column.id ? 'raw-accent-cell' : ''} ${stickyClassByColumn[column.id]}`}
+      style={stickyStyleByColumn[column.id]}
+      title={column.title(row)}
+    >
+      {@render CellContent(column.id, row)}
     </td>
-  {/if}
-  {#if visibleByColumn.temp}
-    <td role="cell" data-col="temp" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'temp' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.temp}`} style={stickyStyleByColumn.temp} title={row.title}>
-      {row.temp}
-    </td>
-  {/if}
-  {#if visibleByColumn.date}
-    <td role="cell" data-col="date" class={`raw-cell justify-end font-mono text-right tabular-nums text-[var(--secondary-text)] ${firstVisibleColumn === 'date' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.date}`} style={stickyStyleByColumn.date} title={row.title}>
-      {row.date}
-    </td>
-  {/if}
-  {#if visibleByColumn.side}
-    <td role="cell" data-col="side" class={`raw-cell font-mono font-semibold ${sideClass(row.source.side)} ${firstVisibleColumn === 'side' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.side}`} style={stickyStyleByColumn.side} title={row.source.side}>
-      {row.sideLabel}
-    </td>
-  {/if}
-  {#if visibleByColumn.type}
-    <td role="cell" data-col="type" data-testid="cell-type" class={`raw-cell font-mono text-foreground ${firstVisibleColumn === 'type' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.type}`} style={stickyStyleByColumn.type} title={row.typeLabel}>
-      {row.typeLabel}
-    </td>
-  {/if}
-  {#if visibleByColumn.outcome}
-    <td role="cell" data-col="outcome" class={`raw-cell font-mono font-semibold ${outcomeClass(row.outcome)} ${firstVisibleColumn === 'outcome' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.outcome}`} style={stickyStyleByColumn.outcome} title={row.outcome}>
-      {row.outcome}
-    </td>
-  {/if}
-  {#if visibleByColumn.price}
-    <td role="cell" data-col="price" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'price' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.price}`} style={stickyStyleByColumn.price} title={String(row.price)}>
-      {#if row.source.type === 'TRADE' && row.price > 0}
-        {@render DecimalNumber(row.price, 3)}
-      {:else}
-        <span class="text-[var(--faint)]">--</span>
-      {/if}
-    </td>
-  {/if}
-  {#if visibleByColumn.shares}
-    <td role="cell" data-col="shares" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'shares' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.shares}`} style={stickyStyleByColumn.shares} title={String(row.shares)}>
-      {@render DecimalNumber(row.shares, 5)}
-    </td>
-  {/if}
-  {#if visibleByColumn.amount}
-    <td role="cell" data-col="amount" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'amount' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.amount}`} style={stickyStyleByColumn.amount} title={String(row.amount)}>
-      {@render DecimalNumber(row.amount, 5)}
-    </td>
-  {/if}
-  {#if visibleByColumn.time}
-    <td role="cell" data-col="time" class={`raw-cell justify-end font-mono text-right tabular-nums text-foreground ${firstVisibleColumn === 'time' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.time}`} style={stickyStyleByColumn.time} title={String(row.source.timestamp)}>
-      {row.time}
-    </td>
-  {/if}
-  {#if visibleByColumn.tx}
-    <td role="cell" data-col="tx" class={`raw-cell justify-end font-mono text-right text-foreground ${firstVisibleColumn === 'tx' ? 'raw-accent-cell' : ''} ${stickyClassByColumn.tx}`} style={stickyStyleByColumn.tx} title={row.txHash}>
-      <a
-        href={row.txHref}
-        target="_blank"
-        rel="noreferrer"
-        title={row.txHash}
-        class="raw-link-anchor text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
-      >
-        LINK
-      </a>
-    </td>
+  {/each}
+{/snippet}
+
+{#snippet CellContent(columnId: ColumnId, row: ActivityDisplayRow)}
+  {#if columnId === 'city'}
+    {row.city}
+  {:else if columnId === 'temp'}
+    {row.temp}
+  {:else if columnId === 'date'}
+    {row.date}
+  {:else if columnId === 'side'}
+    {row.sideLabel}
+  {:else if columnId === 'type'}
+    {row.typeLabel}
+  {:else if columnId === 'outcome'}
+    {row.outcome}
+  {:else if columnId === 'price'}
+    {#if row.source.type === 'TRADE' && row.price > 0}
+      {@render DecimalNumber(row.price, 3)}
+    {:else}
+      <span class="text-[var(--faint)]">--</span>
+    {/if}
+  {:else if columnId === 'shares'}
+    {@render DecimalNumber(row.shares, 5)}
+  {:else if columnId === 'amount'}
+    {@render DecimalNumber(row.amount, 5)}
+  {:else if columnId === 'time'}
+    {row.time}
+  {:else if columnId === 'tx'}
+    <a
+      href={row.txHref}
+      target="_blank"
+      rel="noreferrer"
+      title={row.txHash}
+      class="raw-link-anchor text-[var(--faint)] hover:bg-secondary hover:text-[var(--brand)]"
+    >
+      LINK
+    </a>
   {/if}
 {/snippet}
 

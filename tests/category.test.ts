@@ -59,7 +59,8 @@ describe('category helpers', () => {
     })
     const politicsNo = activity(3, { outcome: 'No', title: 'Will Alice win the election?', eventSlug: 'election-2028' })
 
-    expect(filterRows([weatherYes, weatherNo, politicsNo], 'No', 'weather', {})).toEqual([weatherNo])
+    expect(filterRows([weatherYes, weatherNo, politicsNo], '', '', 'No', 'weather', {})).toEqual([weatherNo])
+    expect(filterRows([weatherYes, weatherNo, politicsNo], 'TRADE', 'BUY', 'No', 'weather', {})).toEqual([weatherNo])
     expect(categoryForRow(weatherYes, {})).toEqual({ value: 'weather', label: 'Weather' })
     expect(getCategoryOptions([weatherYes, politicsNo], {}).map((option) => option.value)).toEqual(['politics', 'weather'])
   })

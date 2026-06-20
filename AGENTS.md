@@ -50,9 +50,8 @@ preview, then Load More fetches 500-row pages. After offset 3000 it restarts at
 `offset=0&end=<oldest timestamp seen>`. `end` is inclusive, so duplicate
 boundary rows are expected and are deduped with `activityKey`.
 
-`src/activitySession.ts` owns activity loading state: server filters, loaded
-pages, cursor/dedupe behavior, polling, loading/error flags, retry, and
-client-filter auto-fill.
+`src/activitySession.ts` owns activity loading state: loaded pages, cursor/dedupe
+behavior, polling, loading/error flags, and retry.
 
 `src/columnState.ts` owns visible/sticky column state: storage, invariants,
 summaries, menu item state, and sticky offset derivation.
@@ -91,10 +90,8 @@ City | Temp | Date | Side | Type | Outcome | Price | Shares | Amount pUSD | Time
 Users can choose which columns are visible and sticky. Horizontal scrolling must
 stay inside `.table-container`, and sticky header/cells must remain aligned.
 
-Type and side filters are server-side. Outcome and category filters are
-client-side over loaded rows. If the default Weather filter would otherwise show
-zero rows from the first preview, the app may auto-load a small number of extra
-pages before showing the empty state.
+All filters are client-side over loaded rows. Load More expands the local row set
+being filtered.
 
 Keep these details intact unless the user explicitly changes them:
 

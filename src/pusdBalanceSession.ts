@@ -45,6 +45,11 @@ class PusdBalanceSession {
     void this.fetch(normalizedAddress, ++this.requestSeq)
   }
 
+  refresh() {
+    if (!this.address) return
+    void this.fetch(this.address, ++this.requestSeq, false)
+  }
+
   dispose() {
     this.controller?.abort()
     this.requestSeq += 1
@@ -58,11 +63,11 @@ class PusdBalanceSession {
     this.patch({ balance: null, fetching: false })
   }
 
-  private async fetch(address: string, seq: number) {
+  private async fetch(address: string, seq: number, clearBalance = true) {
     this.controller?.abort()
     const controller = new AbortController()
     this.controller = controller
-    this.patch({ balance: null, fetching: true })
+    this.patch({ ...(clearBalance ? { balance: null } : {}), fetching: true })
     try {
       const balance = await this.fetchBalance(address, controller.signal)
       if (this.isCurrent(address, seq)) this.patch({ balance })

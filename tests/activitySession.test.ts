@@ -24,7 +24,7 @@ const windowTimers = () => ({
   clearInterval: vi.fn(),
 })
 
-const validQuery = (address = WALLET) => ({ address, type: '' as const, side: '' as const, validAddress: true })
+const validQuery = (address = WALLET) => ({ address, validAddress: true })
 
 describe('activitySession', () => {
   beforeEach(() => {
@@ -134,29 +134,25 @@ describe('activitySession', () => {
     session.dispose()
   })
 
-  it('auto-fills when client-side filters hide all loaded rows', async () => {
-    const pages: ActivityPage[] = [
-      { items: Array.from({ length: 50 }, (_, index) => activity(index)) },
-      {
-        items: [
-          activity(999, {
-            title: 'Will the highest temperature in Miami be 90°F on June 20?',
-            eventSlug: 'weather-miami-90',
-          }),
-        ],
-      },
-    ]
+  it('updates and disables the auto-refresh cadence', async () => {
+    const timers = windowTimers()
+    vi.stubGlobal('window', timers)
     const states: ActivitySessionState[] = []
-    const fetchPage = vi.fn<ActivitySessionOptions['fetchPage']>(async () => pages.shift() ?? { items: [] })
+    const fetchPage = vi.fn<ActivitySessionOptions['fetchPage']>(async () => ({ items: [activity(1)] }))
     const session = createActivitySession({ fetchPage, onChange: (state) => states.push(state) })
 
     session.setQuery(validQuery())
-    await waitFor(() => expect(states.at(-1)?.rows).toHaveLength(50))
-    await session.maybeAutoFillFilteredRows('weather', true, 0)
+    await waitFor(() => expect(states.at(-1)?.rows).toHaveLength(1))
 
-    expect(fetchPage).toHaveBeenCalledTimes(2)
-    expect(states.at(-1)?.rows.map((row) => row.eventSlug)).toContain('weather-miami-90')
-    expect(states.at(-1)?.autoFilling).toBe(false)
+    expect(timers.setInterval).toHaveBeenLastCalledWith(expect.any(Function), 15_000)
+    session.setRefreshIntervalMs(30_000)
+    expect(timers.clearInterval).toHaveBeenCalledWith(1)
+    expect(timers.setInterval).toHaveBeenLastCalledWith(expect.any(Function), 30_000)
+
+    session.setRefreshIntervalMs(0)
+    expect(timers.clearInterval).toHaveBeenCalledWith(1)
+    expect(timers.setInterval).toHaveBeenCalledTimes(2)
     session.dispose()
   })
+
 })

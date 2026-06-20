@@ -1,4 +1,4 @@
-import type { Activity, EventMetadata } from './api'
+import type { Activity, ActivityType, EventMetadata, Side } from './api'
 
 export type CategoryOption = { value: string; label: string }
 export type CategoryMap = Record<string, CategoryOption | null>
@@ -128,11 +128,15 @@ export function areCategoriesSettled(sourceRows: Activity[], sourceCategories: R
 
 export function filterRows(
   sourceRows: Activity[],
+  selectedType: ActivityType | '',
+  selectedSide: Side | '',
   selectedOutcome: string,
   selectedCategory: string,
   sourceCategories: Record<string, CategoryOption | null>,
 ) {
   return sourceRows.filter((row) => {
+    if (selectedType && row.type !== selectedType) return false
+    if (selectedSide && row.side !== selectedSide) return false
     if (selectedOutcome && row.outcome !== selectedOutcome) return false
     if (selectedCategory && categoryForRow(row, sourceCategories)?.value !== selectedCategory) return false
     return true

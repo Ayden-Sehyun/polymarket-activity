@@ -87,18 +87,21 @@ await context.route(/https:\/\/(polygon\.drpc\.org|1rpc\.io\/matic|polygon-bor-r
 
 try {
   await page.goto(`${APP_URL}/?address=${DEFAULT}`)
-  await page.waitForSelector(ROW, { timeout: 12000 })
+  await page.waitForSelector('[data-testid="empty"]', { timeout: 12000 })
 
   const initial = await page.evaluate(() => ({
     category: document.querySelector('[data-testid="filter-category"]')?.value ?? '',
     rows: document.querySelectorAll('[data-testid="raw-row"]').length,
-    firstCity: document.querySelector('[data-testid="raw-row"] [data-col="city"]')?.textContent?.trim() ?? '',
+    empty: !!document.querySelector('[data-testid="empty"]'),
   }))
   ok(
-    'default Weather rows render',
-    initial.category === 'weather' && initial.rows > 0 && initial.firstCity === 'Miami',
-    `category=${initial.category}, rows=${initial.rows}, city=${initial.firstCity}`,
+    'default Weather filters loaded rows without auto-fill',
+    initial.category === 'weather' && initial.rows === 0 && initial.empty,
+    `category=${initial.category}, rows=${initial.rows}, empty=${initial.empty}`,
   )
+
+  await page.locator('[data-testid="filter-category"]').selectOption('')
+  await page.waitForSelector(ROW, { timeout: 12000 })
 
   await page.locator('[data-testid="sticky-summary"]').click()
   await page.locator('[data-testid="sticky-temp"]').check()
@@ -139,6 +142,7 @@ try {
   await page.locator('[data-testid="column-tx"]').uncheck()
   await sleep(150)
   await page.reload()
+  await page.locator('[data-testid="filter-category"]').selectOption('')
   await page.waitForSelector(ROW, { timeout: 12000 })
   const hiddenAfterReload = await page.evaluate(() => ({
     header: !!document.querySelector('[data-testid="raw-header"] [data-col="tx"]'),
