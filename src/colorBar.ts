@@ -3,9 +3,9 @@ export type ColorBarMode = 'horizontal' | 'vertical' | 'none'
 export const DEFAULT_COLOR_BAR_MODE: ColorBarMode = 'horizontal'
 
 export const COLOR_BAR_OPTIONS: { value: ColorBarMode; label: string }[] = [
-  { value: 'horizontal', label: 'COLOR HORIZONTAL' },
-  { value: 'vertical', label: 'COLOR VERTICAL' },
-  { value: 'none', label: 'COLOR NONE' },
+  { value: 'horizontal', label: 'ROW ACCENT' },
+  { value: 'vertical', label: 'SIDE ACCENT' },
+  { value: 'none', label: 'NO ACCENT' },
 ]
 
 const COLOR_BAR_STORAGE_KEY = 'activity-color-bar-mode'

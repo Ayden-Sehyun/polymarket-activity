@@ -134,20 +134,7 @@
 
   .top-status-row > * {
     position: relative;
-  }
-
-  .top-status-row > *::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: 1px;
-    pointer-events: none;
-    background: var(--hairline);
-    opacity: 0.18;
-    transform: scaleX(0.5);
-    transform-origin: right;
+    border-right: 1px solid var(--hairline);
   }
 
   .ui-top-cell {
@@ -243,9 +230,7 @@
   }
 
   .raw-table[data-color-mode='horizontal'] .raw-row .raw-cell {
-    box-shadow:
-      inset 0 1px 0 var(--row-accent, transparent),
-      inset 0 -1px 0 var(--row-accent, transparent);
+    border-bottom-color: var(--row-accent, var(--hairline));
   }
 
   .raw-table[data-color-mode='vertical'] .raw-row .raw-accent-cell {
